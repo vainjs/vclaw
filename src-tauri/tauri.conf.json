@@ -12,9 +12,10 @@
   "app": {
     "windows": [
       {
-        "title": "vclaw",
-        "width": 800,
-        "height": 600
+        "title": "",
+        "width": 1100,
+        "height": 700,
+        "decorations": true
       }
     ],
     "security": {

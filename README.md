@@ -11,12 +11,12 @@
 
 ## 技术栈
 
-| 层级 | 技术 |
-|------|------|
-| 前端框架 | React 19 + TypeScript + Vite |
-| UI 组件库 | @ant-design/x + antd |
-| 桌面运行时 | Tauri 2.x |
-| 进程管理 | Rust (Tauri Commands) |
+| 层级       | 技术                         |
+| ---------- | ---------------------------- |
+| 前端框架   | React 19 + TypeScript + Vite |
+| UI 组件库  | @ant-design/x + antd         |
+| 桌面运行时 | Tauri 2.x                    |
+| 进程管理   | Rust (Tauri Commands)        |
 
 ## 快速开始
 
@@ -56,7 +56,3 @@ Frontend (React) ──invoke──> Rust (Tauri) ──stdin/stdout──> open
 - `src/lib/openclaw-adapter.ts` — TypeScript 封装层
 - `src/components/` — React 组件
 - `src-tauri/src/main.rs` — Rust Tauri 命令
-
-## 许可证
-
-MIT

@@ -3,202 +3,248 @@
 **项目名称：** VClaw
 **版本：** 0.1.0
 **日期：** 2026-04-02
+**更新：** 2026-04-02（新增 openclaw 内置和版本升级机制）
 
 ## 一、项目概述
 
 VClaw 是一个基于 Tauri + React + TypeScript 的跨平台桌面客户端，用于封装原生 openclaw。安装即用，通过全新 UI 暴露 openclaw 的核心能力：对话聊天、多渠道消息聚合、简化的渠道配置。
 
 **核心设计原则：**
-- 轻量实现，快速出 MVP，不过度工程化
-- 沙箱隔离：VClaw 使用独立的 `vclaw-data/` 目录存放配置和数据，与系统或其他 openclaw 实例隔离
-- 可演进：接口抽象层设计为可插拔，后续可接入云服务
+- **一键安装即用**：VClaw 内置 openclaw，用户无需单独安装
+- **版本自动管理**：检测 npm 最新版本，支持一键升级
+- **沙箱隔离**：VClaw 使用独立的 `vclaw-data/` 目录存放配置和数据，与系统或其他 openclaw 实例隔离
+- **可演进**：接口抽象层设计为可插拔，后续可接入云服务
 
 ## 二、技术栈
 
 | 层级 | 技术选型 |
 |------|---------|
 | 前端框架 | React 19 + TypeScript + Vite |
-| UI 组件库 | @ant-design/x + antd（最新版本） |
+| UI 组件库 | antd（最新版本） |
 | 桌面运行时 | Tauri 2.x |
 | openclaw 封装层 | TypeScript Adapter（`src/lib/openclaw-adapter.ts`） |
 | openclaw 进程管理 | Rust（Tauri Commands） |
+| openclaw 版本管理 | Rust（Tauri Commands）+ npm registry |
 | 配置存储 | 本地 JSON 文件（`vclaw-data/` 内） |
 | 实时消息 | Tauri Events |
-| Node.js 检测 | 安装时检测 Node.js 版本及路径信息 |
+| Node.js 环境 | 复用系统 Node.js（通过 node 命令调用） |
 
-## 三、架构设计
+## 三、核心架构
+
+### 3.1 openclaw 管理策略
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        Frontend (React)                     │
-│  ┌──────────────┐   ┌──────────────┐   ┌─────────────────┐ │
-│  │   Chat UI    │   │   Sidebar    │   │  Channel Panel  │ │
-│  └──────────────┘   └──────────────┘   └─────────────────┘ │
-│                           │                                  │
-│  ┌────────────────────────┴─────────────────────────────┐   │
-│  │           openclaw-adapter.ts (TS Adapter)           │   │
-│  └────────────────────────┬─────────────────────────────┘   │
-└───────────────────────────┼─────────────────────────────────┘
-                            │ invoke
-┌───────────────────────────┼─────────────────────────────────┐
-│                      Rust (Tauri)                            │
-│  ┌────────────────────────┴─────────────────────────────┐   │
-│  │   Commands: send_message, get_channels, start/stop   │   │
-│  │   Process Manager: spawn, kill, tail stdout/stderr   │   │
-│  └────────────────────────┬─────────────────────────────┘   │
-└───────────────────────────┼─────────────────────────────────┘
-                            │ stdin/stdout
-┌───────────────────────────┼─────────────────────────────────┐
-│                    openclaw CLI (Node.js)                    │
-│  ┌────────────────────────┴─────────────────────────────┐   │
-│  │             vclaw-data/ (隔离的沙箱目录)               │   │
-│  │   config.json │ channels/ │ logs/ │ data/            │   │
+│                    VClaw Application                         │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │         Rust Layer (Tauri Commands)                  │   │
+│  │  ┌───────────────┐  ┌───────────────┐                │   │
+│  │  │ Process Mgr   │  │ Version Mgr    │                │   │
+│  │  │ - spawn       │  │ - get_version │                │   │
+│  │  │ - kill        │  │ - check_latest│                │   │
+│  │  │ - tail_logs   │  │ - upgrade     │                │   │
+│  │  └───────┬───────┘  └───────┬───────┘                │   │
+│  └──────────┼──────────────────┼────────────────────────┘   │
+│             │                  │                            │
+│  ┌──────────┼──────────────────┼────────────────────────┐   │
+│  │          ▼                  ▼                         │   │
+│  │  ┌─────────────────┐  ┌─────────────────┐              │   │
+│  │  │  vclaw-data/   │  │  npm Registry   │              │   │
+│  │  │  openclaw/     │  │  (版本检测)     │              │   │
+│  │  │  (运行时目录)    │  │                 │              │   │
+│  │  └─────────────────┘  └─────────────────┘              │   │
+│  │         │                                               │   │
+│  │         ▼                                               │   │
+│  │  ┌─────────────────────────────────────────────────┐   │   │
+│  │  │           node openclaw.js                      │   │   │
+│  │  └─────────────────────────────────────────────────┘   │   │
 │  └───────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 四、模块设计
+### 3.2 目录结构
 
-### 4.1 TS Adapter（`src/lib/openclaw-adapter.ts`）
-
-openclaw CLI 的 TypeScript 封装层，负责：
-- CLI 命令的参数组装
-- stdout/stderr 结果解析
-- JSON 响应映射为前端数据结构
-- 与 Tauri invoke 交互
-
-```typescript
-// 核心接口（待 openclaw CLI 实际接口确定后调整）
-export interface VClawAdapter {
-  sendMessage(channel: string, message: string): Promise<Message>;
-  getChannels(): Promise<Channel[]>;
-  getConversations(channel?: string): Promise<Conversation[]>;
-  startOpenClaw(): Promise<void>;
-  stopOpenClaw(): Promise<void>;
-}
+```
+vclaw/
+├── src/                          # 前端源码
+│   ├── lib/
+│   │   └── openclaw-adapter.ts   # TS 适配器
+│   ├── components/                # React 组件
+│   ├── App.tsx
+│   ├── App.css
+│   └── main.tsx
+├── src-tauri/                    # Tauri/Rust 后端
+│   ├── src/
+│   │   ├── main.rs               # 入口
+│   │   ├── lib.rs                # Tauri Commands
+│   │   └── openclaw_manager.rs   # openclaw 版本和进程管理
+│   └── tauri.conf.json
+├── resources/                    # 内置资源（首次安装用）
+│   └── openclaw/                 # 内置 openclaw 包
+└── vclaw-data/                   # 运行时沙箱目录
+    ├── config.json               # VClaw 配置
+    ├── openclaw/                 # 用户下载的 openclaw（覆盖内置）
+    │   └── bin/
+    │       └── openclaw.js
+    ├── channels/                 # 渠道配置
+    ├── logs/                     # 日志
+    └── data/                     # 数据文件
 ```
 
-### 4.2 Rust 进程管理（Tauri Commands）
+### 3.3 启动流程
 
-负责 openclaw CLI 进程的生命周期管理：
-- `check_node_env()` — 检测 Node.js 版本、路径、npm 版本
-- `start_openclaw()` — 在 `vclaw-data/` 目录启动 openclaw CLI
-- `stop_openclaw()` — 终止进程
-- `tail_logs()` — 通过 Tauri Event 将 stdout/stderr 实时推送到前端
+```
+用户启动 VClaw
+       │
+       ▼
+┌──────────────────┐
+│ 检测 vclaw-data/ │
+│   openclaw 存在? │
+└────────┬─────────┘
+         │
+    No   │   Yes
+    ┌────┴────┐
+    ▼         ▼
+┌────────┐  ┌────────────────────────┐
+│复制内置  │  │ 检测 npm 最新版本      │
+│资源到    │  │ 比较当前版本            │
+│vclaw-data│  └────────┬─────────────┘
+└────┬────┘           │
+     │           有新版本?
+     │           ┌────┴────┐
+     │           ▼         ▼
+     │        提示升级   使用当前版本
+     │        │              │
+     └────┬───┘              │
+          │                  │
+          ▼                  ▼
+    ┌─────────────────────────────┐
+    │    spawn openclaw 进程       │
+    │    启动成功 → 显示主界面       │
+    └─────────────────────────────┘
+```
 
-### 4.3 前端组件
+### 3.4 版本升级流程
+
+```
+┌─────────────────┐
+│ 用户点击"检查更新"│
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│ 请求 npm registry│
+│ 获取 openclaw   │
+│ 最新版本号       │
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│ 比较内置版本 vs  │
+│ npm 最新版本    │
+└────────┬────────┘
+         │
+    内置版本 < 最新
+         │
+         ▼
+┌─────────────────┐
+│ 显示更新提示    │
+│ "发现新版本 X.X" │
+└────────┬────────┘
+         │
+    用户确认升级
+         │
+         ▼
+┌─────────────────────────┐
+│ npm pack openclaw@latest │
+│ 解压到 vclaw-data/openclaw│
+└────────┬──────────────────┘
+         │
+         ▼
+┌─────────────────────────┐
+│ 重启 openclaw 进程       │
+│ 使用新版本              │
+└─────────────────────────┘
+```
+
+## 四、Rust Commands 设计
+
+| Command | 描述 |
+|---------|------|
+| `get_node_env` | 获取 Node.js 环境信息 |
+| `get_openclaw_version` | 获取当前 openclaw 版本 |
+| `check_openclaw_update` | 检查 npm 最新版本 |
+| `upgrade_openclaw` | 升级到最新版本 |
+| `start_openclaw` | 启动 openclaw 进程 |
+| `stop_openclaw` | 停止 openclaw 进程 |
+| `send_message` | 发送消息（预留） |
+| `get_channels` | 获取渠道列表（预留） |
+
+## 五、前端组件
 
 | 组件 | 职责 |
 |------|------|
 | `App.tsx` | 根组件，布局容器 |
-| `ChatView` | 对话界面（基于 @ant-design/x 的聊天组件） |
-| `Sidebar` | 左侧边栏（会话列表、渠道切换） |
-| `ChannelPanel` | 渠道配置面板（侧边栏底部展开） |
-| `MessageBubble` | 单条消息渲染 |
-| `ChannelItem` | 渠道列表项 |
+| `ChatView` | 对话界面（antd List + Input 实现） |
+| `Sidebar` | 左侧边栏（渠道切换） |
+| `ChannelPanel` | 渠道配置面板 |
+| `SettingsPage` | 设置页（版本信息、检查更新） |
 
-### 4.4 样式
+## 六、样式
 
-基于 @ant-design/x 和 antd 的简约浅色风格：
-- 使用 antd ConfigProvider 定制主题（白色/浅灰背景）
-- 保持 @ant-design/x 聊天组件默认样式，微调主色调
+简约浅色风格（基于 antd ConfigProvider）：
+- 白色/浅灰背景
+- 干净线条，无多余装饰
 - 参考 ChatGPT/Claude 的简洁对话体验
-
-### 4.5 安装检测
-
-安装时通过 Tauri 命令检测 Node.js 环境：
-- `node --version` — 获取 Node.js 版本
-- `which node` — 获取 Node.js 路径
-- `npm --version` — 获取 npm 版本
-- 检测结果写入 `vclaw-data/config.json`
-
-## 五、目录结构
-
-```
-vclaw/
-├── src/
-│   ├── lib/
-│   │   └── openclaw-adapter.ts   # TS 适配器
-│   ├── components/
-│   │   ├── ChatView.tsx
-│   │   ├── Sidebar.tsx
-│   │   ├── ChannelPanel.tsx
-│   │   ├── MessageBubble.tsx
-│   │   └── ChannelItem.tsx
-│   ├── App.tsx
-│   ├── App.css
-│   └── main.tsx
-├── src-tauri/
-│   ├── src/
-│   │   └── main.rs              # Tauri 命令、进程管理
-│   └── tauri.conf.json
-├── vclaw-data/                   # 运行时生成，隔离的沙箱目录
-│   ├── config.json
-│   ├── channels/
-│   ├── logs/
-│   └── data/
-└── docs/superpowers/specs/       # 设计文档
-```
-
-## 六、数据流
-
-### 6.1 发送消息
-
-```
-用户输入 → ChatView → openclaw-adapter.sendMessage()
-  → Tauri invoke('send_message')
-  → Rust: openclaw CLI stdout
-  → 解析 JSON → 返回 Message
-  → ChatView 更新消息列表
-```
-
-### 6.2 实时日志
-
-```
-Rust tail stdout → Tauri Event('openclaw-log')
-→ Frontend 监听 → 在日志面板实时展示
-```
-
-### 6.3 启动流程
-
-```
-App 挂载 → Tauri invoke('start_openclaw')
-→ Rust: spawn openclaw CLI in vclaw-data/
-→ Tauri Event('openclaw-started')
-→ getChannels() → 渲染侧边栏渠道列表
-```
 
 ## 七、沙箱隔离
 
-- **数据目录：** 所有 openclaw 配置和数据存放在 `vclaw-data/`（相对 Tauri app 根目录）
-- **环境隔离：** openclaw 进程看不到系统其他位置的任何 openclaw 配置
-- **Node.js 环境：** 复用系统 Node.js，不捆绑独立运行时
+openclaw 支持通过环境变量指定目录，实现完全隔离：
 
-## 八、上云迁移路径
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `OPENCLAW_STATE_DIR` | `~/.openclaw/` | 状态目录（sessions、logs、cache） |
+| `OPENCLAW_CONFIG_PATH` | `$STATE_DIR/openclaw.json` | 配置文件路径 |
+| `OPENCLAW_OAUTH_DIR` | `$STATE_DIR/credentials/` | OAuth 凭证目录 |
 
-当前架构为本地优先，云服务支持在后续版本实现：
+**启动命令：**
+
+```bash
+OPENCLAW_STATE_DIR=/path/to/vclaw-data \
+OPENCLAW_OAUTH_DIR=/path/to/vclaw-data/credentials \
+node /path/to/vclaw-data/openclaw/bin/openclaw.js
+```
+
+**效果：**
+- openclaw 所有数据写入 `vclaw-data/` 目录
+- 不读写 `~/.openclaw/` 等系统目录
+- 与系统或其他 openclaw 实例完全隔离
+
+**目录结构：**
 
 ```
-当前: Frontend → Tauri Commands → Local openclaw CLI
-            ↓ 换 adapter 实现
-未来: Frontend → Tauri Commands → Remote openclaw HTTP API
+vclaw-data/                    # 沙箱根目录
+├── openclaw.json              # 配置文件
+├── credentials/               # OAuth 凭证
+├── agents/                    # Agent 配置
+├── sessions/                  # 会话数据
+├── logs/                     # 日志
+├── cache/                    # 缓存
+└── workspace/                 # 工作区
 ```
 
-关键：Rust 层的 Commands 接口保持稳定，前端通过 TS Adapter 切换本地/远程实现。
+## 八、验收标准
+
+1. 用户安装 VClaw 后，无需额外操作即可使用 openclaw
+2. VClaw 启动时自动检测并显示当前 openclaw 版本
+3. VClaw 可检查 npm 最新版本，提示用户升级
+4. 用户可一键升级 openclaw 到最新版本
+5. openclaw 所有数据严格限制在 `vclaw-data/` 目录内
+6. UI 为简约浅色风格，聊天优先界面
 
 ## 九、待确定事项
 
 - openclaw CLI 的具体接口（send_message、get_channels 等的参数和返回值格式）
-- openclaw 日志输出格式（以便 Rust 解析实时推送）
+- openclaw 日志输出格式
 - 渠道配置的 JSON Schema
 
 以上接口待 openclaw 提供方确认后补充到本文档。
-
-## 十、验收标准
-
-1. VClaw 启动时正确检测并显示 Node.js 环境信息
-2. VClaw 可正常启动 openclaw CLI 进程
-3. 用户可在 ChatView 发送消息并收到回复
-4. 渠道列表正确显示，且可展开配置面板
-5. 所有 openclaw 数据严格限制在 `vclaw-data/` 目录内
-6. UI 使用 @ant-design/x + antd，简约浅色风格，聊天优先界面

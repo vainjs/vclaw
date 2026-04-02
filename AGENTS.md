@@ -84,6 +84,36 @@ listen<string>('openclaw-log', (event) => {
 - 详细设计见 `docs/superpowers/specs/2026-04-02-VClaw-design.md`
 - 实现计划见 `docs/superpowers/plans/2026-04-02-VClaw-implementation-plan.md`
 
+## 工作流程
+
+本项目使用 superpowers 和 oh-my-openagent 配合工作。
+
+### 工具链
+
+| 工具 | 职责 |
+|------|------|
+| **superpowers** | 项目专属技能和工作流（brainstorming、writing-plans、TDD 等） |
+| **oh-my-openagent** | 模型编排和高效执行（Sisyphus 调度、parallel agents、ultrawork） |
+
+### 工作流程
+
+| 阶段 | 工具 | 触发方式 |
+|------|------|---------|
+| 需求分析 | superpowers brainstorming | 任务匹配时自动加载，或明确说 "用 brainstorming" |
+| 方案规划 | superpowers writing-plans | 设计确认后触发 |
+| 代码实现 | oh-my-openagent ultrawork | 说 "ultrawork" 或 "ulw" 激活并行执行 |
+| 代码审查 | oh-my-openagent subagent | 派发独立 agent 执行 |
+| 提交代码 | superpowers commit skill | 触发 Conventional Commits 格式检查 |
+
+### 触发示例
+
+```
+帮我分析这个功能的设计         → 触发 brainstorming skill
+基于 spec 写实现计划           → 触发 writing-plans skill
+用 TDD 方式实现这个功能        → 触发 test-driven-development skill
+开始实现 Phase 1 的任务        → 使用 ultrawork 并行执行
+```
+
 ## 提交规范
 
 使用 Conventional Commits 格式：
