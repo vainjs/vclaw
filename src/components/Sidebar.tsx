@@ -1,67 +1,62 @@
 import { Menu, Button, Badge, Typography } from 'antd'
-import { MessageOutlined, SettingOutlined, TeamOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
-import type { MenuProps } from 'antd'
-import { useEffect } from 'react'
-import { getOpenClawStatus, OpenClawStatus } from '../lib/openclaw-adapter'
+import { MessageOutlined, LaptopOutlined, TeamOutlined, MenuFoldOutlined, MenuUnfoldOutlined, FileTextOutlined, ToolOutlined } from '@ant-design/icons'
+import { NavLink, useLocation } from 'react-router'
 
 const { Text } = Typography
 
-type MenuItem = Required<MenuProps>['items'][number]
-
-const items: MenuItem[] = [
+const items = [
   {
     key: 'chat',
     icon: <MessageOutlined />,
-    label: '聊天',
+    label: <NavLink to="/chat">聊天</NavLink>,
   },
   {
     key: 'channels',
     icon: <TeamOutlined />,
-    label: '渠道',
+    label: <NavLink to="/channels">渠道</NavLink>,
   },
   {
-    key: 'settings',
-    icon: <SettingOutlined />,
-    label: '设置',
+    key: 'logs',
+    icon: <FileTextOutlined />,
+    label: <NavLink to="/logs">日志</NavLink>,
+  },
+    {
+      key: 'settings',
+      icon: <LaptopOutlined />,
+      label: <NavLink to="/settings">环境</NavLink>,
+    },
+  {
+    key: 'config',
+    icon: <ToolOutlined />,
+    label: <NavLink to="/config">配置</NavLink>,
   },
 ]
 
 interface SidebarProps {
   collapsed: boolean
-  activeKey: string
-  onSelect: (key: string) => void
   onCollapse: (collapsed: boolean) => void
-  status: OpenClawStatus
-  onStatusChange: (status: OpenClawStatus) => void
+  gatewayConnected: boolean
   version: string
 }
 
 export default function Sidebar({
   collapsed,
-  activeKey,
-  onSelect,
   onCollapse,
-  status,
-  onStatusChange,
+  gatewayConnected,
   version,
 }: SidebarProps) {
-  useEffect(() => {
-    const interval = setInterval(() => {
-      getOpenClawStatus().then(onStatusChange).catch(console.error)
-    }, 5000)
+  const location = useLocation()
 
-    return () => clearInterval(interval)
-  }, [onStatusChange])
+  const selectedKey = location.pathname.split('/')[1] || 'chat'
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ flex: 1 }}>
         <Menu
           style={{ border: 'none', background: '#fff' }}
-          onClick={({ key }) => onSelect(key)}
           inlineCollapsed={collapsed}
-          selectedKeys={[activeKey]}
           mode='inline'
+          selectedKeys={[selectedKey]}
           items={items}
         />
       </div>
@@ -89,7 +84,7 @@ export default function Sidebar({
           >
             {collapsed ? '' : version}
           </Text>
-          <Badge dot status={status.running ? 'success' : 'error'} />
+          <Badge dot status={gatewayConnected ? 'success' : 'error'} />
         </div>
       </div>
     </div>

@@ -6,8 +6,8 @@
 
 - **聊天优先界面** — 基于 @ant-design/x 的现代化对话体验
 - **多渠道聚合** — 支持 Discord、Slack、Telegram、Webhook 等渠道
-- **沙箱隔离** — 所有配置和数据存放在独立的 `vclaw-data/` 目录
-- **开箱即用** — 安装即可使用，无需复杂配置
+- **全局 openclaw** — 使用系统全局安装的 openclaw，配置在 `~/.openclaw/`
+- **VClaw 数据隔离** — VClaw 自身配置存放在 `vclaw-data/` 目录
 
 ## 技术栈
 
@@ -24,35 +24,36 @@
 
 - Node.js 18+
 - Rust 1.70+
-- npm 或 yarn
+- pnpm (`npm install -g pnpm`)
+- openclaw (`pnpm add -g openclaw`)
 
 ### 安装依赖
 
 ```bash
-npm install
+pnpm install
 ```
 
 ### 开发模式
 
 ```bash
-npm run tauri dev
+pnpm run tauri dev
 ```
 
 ### 构建
 
 ```bash
-npm run build
-npm run tauri build
+pnpm run build
+pnpm run tauri build
 ```
 
 ## 架构
 
 ```
-Frontend (React) ──invoke──> Rust (Tauri) ──stdin/stdout──> openclaw CLI
+Frontend (React) ──invoke──> Rust (Tauri) ──stdin/stdout──> openclaw CLI (全局)
                                               │
-                                      vclaw-data/ (沙箱目录)
+                                      vclaw-data/ (VClaw 数据)
 ```
 
 - `src/lib/openclaw-adapter.ts` — TypeScript 封装层
-- `src/components/` — React 组件
-- `src-tauri/src/main.rs` — Rust Tauri 命令
+- `src/pages/` — 页面组件
+- `src-tauri/src/lib.rs` — Rust Tauri 命令
