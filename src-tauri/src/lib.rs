@@ -2,7 +2,6 @@ use std::process::Command;
 use std::sync::Mutex;
 use tauri::Manager;
 
-// AppState kept for backward compatibility with invoke_handler, but no longer tracks child process
 struct AppState {
     _placeholder: Mutex<Option<()>>,
 }
@@ -265,8 +264,11 @@ fn get_channels(app_handle: tauri::AppHandle) -> Result<Vec<serde_json::Value>, 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(AppState {
-            _placeholder: Mutex::new(None),
+        .setup(|app| {
+            app.manage(AppState {
+                _placeholder: Mutex::new(None),
+            });
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             check_node_env,

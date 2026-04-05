@@ -45,11 +45,7 @@ const router = createBrowserRouter([
       },
       {
         path: 'logs',
-        element: (
-          <div style={{ padding: 16, height: '100%' }}>
-            <Log />
-          </div>
-        ),
+        element: <Log />,
       },
       {
         path: 'gateway',
