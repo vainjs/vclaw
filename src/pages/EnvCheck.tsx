@@ -8,7 +8,7 @@ const { Title, Text } = Typography
 
 type CheckStatus = 'pending' | 'checking' | 'success' | 'error'
 
-export default function EnvCheckPage() {
+export default function EnvCheck() {
   const navigate = useNavigate()
   const [nodeStatus, setNodeStatus] = useState<CheckStatus>('checking')
   const [nodeDesc, setNodeDesc] = useState('')

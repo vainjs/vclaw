@@ -4,7 +4,7 @@ import { readGlobalConfig } from '../lib/openclaw-adapter'
 
 const { Text } = Typography
 
-export default function ConfigPage() {
+export default function Config() {
   const [configContent, setConfigContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -44,8 +44,15 @@ export default function ConfigPage() {
   } catch {
     return (
       <div style={{ padding: 16 }}>
-        <Card title='配置文件' extra={<Text type='secondary' style={{ fontSize: 12 }}>~/.openclaw/openclaw.json</Text>}>
-          <pre style={{ fontSize: 12, overflow: 'auto' }}>{configContent}</pre>
+        <Card
+          title='配置文件'
+          extra={
+            <Text type='secondary' style={{ fontSize: 12 }}>
+              ~/.openclaw/openclaw.json
+            </Text>
+          }
+        >
+          <pre style={{ fontSize: 12 }}>{configContent}</pre>
         </Card>
       </div>
     )
@@ -55,8 +62,15 @@ export default function ConfigPage() {
 
   return (
     <div style={{ padding: 16, height: '100%', overflow: 'auto' }}>
-      <Card title='配置文件' extra={<Text type='secondary' style={{ fontSize: 12 }}>~/.openclaw/openclaw.json</Text>}>
-        <pre style={{ fontSize: 12, overflow: 'auto', margin: 0 }}>{formatted}</pre>
+      <Card
+        title='配置文件'
+        extra={
+          <Text type='secondary' style={{ fontSize: 12 }}>
+            ~/.openclaw/openclaw.json
+          </Text>
+        }
+      >
+        <pre style={{ fontSize: 12, margin: 0 }}>{formatted}</pre>
       </Card>
     </div>
   )

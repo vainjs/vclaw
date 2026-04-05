@@ -6,7 +6,7 @@ import { useGatewayContext } from '../contexts/GatewayContext'
 
 const { Text } = Typography
 
-export default function SettingsPage() {
+export default function Gateway() {
   const ctx = useGatewayContext()
   const [status, setStatus] = useState<OpenClawStatus>({ running: false })
   const [version, setVersion] = useState('')
@@ -50,30 +50,26 @@ export default function SettingsPage() {
             <tr style={{ borderBottom: '1px solid #f0f0f0' }}>
               <td style={{ padding: '10px 0' }}>Node.js</td>
               <td style={{ padding: '10px 0' }}>
-                {envInfo?.node.installed ? (
-                  <Text>v{envInfo.node.version}</Text>
-                ) : (
-                  <Text type='secondary'>未安装</Text>
-                )}
+                {envInfo?.node.installed ? <Text>v{envInfo.node.version}</Text> : <Text type='secondary'>未安装</Text>}
               </td>
               <td style={{ padding: '10px 0' }}>
                 {envInfo?.node.installed ? (
-                  <Text type='secondary' style={{ fontSize: 12 }}>{envInfo.node.path}</Text>
+                  <Text type='secondary' style={{ fontSize: 12 }}>
+                    {envInfo.node.path}
+                  </Text>
                 ) : null}
               </td>
             </tr>
             <tr>
               <td style={{ padding: '10px 0' }}>OpenClaw</td>
               <td style={{ padding: '10px 0' }}>
-                {envInfo?.openclaw.installed ? (
-                  <Text>{version || '-'}</Text>
-                ) : (
-                  <Text type='secondary'>未安装</Text>
-                )}
+                {envInfo?.openclaw.installed ? <Text>{version || '-'}</Text> : <Text type='secondary'>未安装</Text>}
               </td>
               <td style={{ padding: '10px 0' }}>
                 {envInfo?.openclaw.installed ? (
-                  <Text type='secondary' style={{ fontSize: 12 }}>{envInfo.openclaw.path}</Text>
+                  <Text type='secondary' style={{ fontSize: 12 }}>
+                    {envInfo.openclaw.path}
+                  </Text>
                 ) : null}
               </td>
             </tr>
@@ -81,43 +77,61 @@ export default function SettingsPage() {
         </table>
       </Card>
 
-      <Card title='OpenClaw 进程' style={{ marginTop: 16 }}>
+      <Card title='网关信息' style={{ marginTop: 16 }}>
         <Descriptions column={1} size='small'>
-          <Descriptions.Item label='状态'>
-            <Text type={gatewayConnected ? 'success' : 'secondary'}>
-              {gatewayConnected ? '运行中' : '未运行'}
-            </Text>
-          </Descriptions.Item>
-          <Descriptions.Item label='Gateway URL'>
+          <Descriptions.Item label='网关地址'>
             <Text code>{status.gatewayUrl || '-'}</Text>
+          </Descriptions.Item>
+          <Descriptions.Item label='状态'>
+            <Text type={gatewayConnected ? 'success' : 'secondary'}>{gatewayConnected ? '运行中' : '未运行'}</Text>
           </Descriptions.Item>
         </Descriptions>
         <Divider style={{ margin: '12px 0' }} />
         <Space>
-          <Button type='primary' icon={<PlayCircleOutlined />} disabled={gatewayConnected} loading={startLoading} onClick={async () => {
-            setStartLoading(true)
-            try {
-              await ctx?.start()
-            } catch (e) {
-              message.error('启动失败: ' + String(e))
-            } finally {
-              setStartLoading(false)
-            }
-            loadData()
-          }}>
+          <Button
+            type='primary'
+            icon={<PlayCircleOutlined />}
+            disabled={gatewayConnected}
+            loading={startLoading}
+            onClick={() => {
+              if (!ctx) return
+              setStartLoading(true)
+              ctx
+                .start()
+                .then(() => {
+                  loadData()
+                })
+                .catch((e) => {
+                  message.error('启动失败: ' + String(e))
+                })
+                .finally(() => {
+                  setStartLoading(false)
+                })
+            }}
+          >
             启动
           </Button>
-          <Button danger icon={<PoweroffOutlined />} disabled={!gatewayConnected} loading={stopLoading} onClick={async () => {
-            setStopLoading(true)
-            try {
-              await ctx?.stop()
-            } catch (e) {
-              message.error('停止失败: ' + String(e))
-            } finally {
-              setStopLoading(false)
-            }
-            loadData()
-          }}>
+          <Button
+            danger
+            icon={<PoweroffOutlined />}
+            disabled={!gatewayConnected}
+            loading={stopLoading}
+            onClick={() => {
+              if (!ctx) return
+              setStopLoading(true)
+              ctx
+                .stop()
+                .then(() => {
+                  loadData()
+                })
+                .catch((e) => {
+                  message.error('停止失败: ' + String(e))
+                })
+                .finally(() => {
+                  setStopLoading(false)
+                })
+            }}
+          >
             停止
           </Button>
         </Space>

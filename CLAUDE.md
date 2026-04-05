@@ -42,11 +42,11 @@ src/
 │   └── openclaw-adapter.ts   # TS 适配器
 ├── pages/
 │   ├── ChatView.tsx          # 聊天页
-│   ├── ChannelPanel.tsx      # 渠道配置页
-│   ├── LogPanel.tsx          # 日志页
-│   ├── ConfigPage.tsx        # 配置查看页
-│   ├── EnvCheckPage.tsx     # 环境检测页
-│   └── SettingsPage.tsx      # 设置页
+│   ├── Channel.tsx           # 渠道配置页
+│   ├── Log.tsx               # 日志页
+│   ├── Config.tsx            # 配置查看页
+│   ├── EnvCheck.tsx          # 环境检测页
+│   └── Gateway.tsx           # 网关管理页（原 SettingsPage）
 ├── components/
 │   ├── AppLayout.tsx         # 布局容器
 │   └── Sidebar.tsx           # 侧边栏
@@ -56,23 +56,6 @@ src/
 ├── App.tsx                   # 根组件
 └── main.tsx                  # 入口
 ```
-src/
-├── lib/
-│   └── openclaw-adapter.ts   # TS 适配器
-├── components/
-│   ├── ChatView.tsx          # @ant-design/x 聊天组件
-│   ├── Sidebar.tsx           # 侧边栏
-│   ├── ChannelPanel.tsx      # 渠道配置面板
-│   ├── LogPanel.tsx          # 日志面板
-│   ├── ConfigPage.tsx        # 配置查看页
-│   ├── EnvCheckPage.tsx     # 环境检测页
-│   └── SettingsPage.tsx      # 设置页
-├── contexts/
-│   └── GatewayContext.tsx    # GatewayClient Context
-├── routes.tsx                # 路由配置
-├── App.tsx                   # 根组件
-└── main.tsx                  # 入口
-
 src-tauri/
 ├── src/
 │   └── lib.rs                # Rust 命令和进程管理
@@ -84,8 +67,9 @@ src-tauri/
 | Command | 描述 |
 |---------|------|
 | `check_node_env` | 检测 Node.js 版本、路径、npm 版本 |
-| `start_openclaw` | 启动 openclaw gateway 进程 |
-| `stop_openclaw` | 终止 openclaw 进程 |
+| `start_openclaw` | 启动 openclaw gateway（TCP 检测端口，已运行则直接返回 URL） |
+| `stop_openclaw` | 停止 openclaw gateway（执行 CLI 命令） |
+| `restart_openclaw` | 重启 openclaw gateway |
 | `get_openclaw_version` | 获取 openclaw 版本 |
 | `get_openclaw_status` | 获取 openclaw 进程状态 |
 | `check_env` | 检测 Node.js 和 OpenClaw 安装状态 |

@@ -4377,6 +4377,7 @@ name = "vclaw"
 version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
+ "futures-channel",
  "serde",
  "serde_json",
  "tauri",

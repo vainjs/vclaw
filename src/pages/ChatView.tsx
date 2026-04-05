@@ -1,15 +1,26 @@
 import { Bubble, Sender } from '@ant-design/x'
 import { useState, useEffect, useRef } from 'react'
-import { Typography } from 'antd'
-import { GatewayEventFrame, ChatEventPayload } from '../lib/openclaw-adapter'
+import { GatewayEventFrame } from '../lib/openclaw-adapter'
 import { useGateway } from '../contexts/GatewayContext'
-
-const { Text } = Typography
 
 interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
+}
+
+interface GatewayChatPayload {
+  runId: string
+  sessionKey: string
+  seq?: number
+  state: 'delta' | 'final' | 'error' | 'aborted'
+  message?: {
+    role: string
+    content: Array<{ type: string; text: string }>
+    timestamp?: number
+  }
+  stopReason?: string
+  errorMessage?: string
 }
 
 let idCounter = 0
@@ -19,6 +30,14 @@ function nextId(): string {
 
 function idempotencyKey(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+function getTextFromPayload(payload: GatewayChatPayload): string | null {
+  if (payload.state === 'error') return payload.errorMessage || '未知错误'
+  if (payload.message?.content?.[0]?.text) {
+    return payload.message.content[0].text
+  }
+  return null
 }
 
 export default function ChatView() {
@@ -45,13 +64,17 @@ export default function ChatView() {
 
     const unlisten = client.onEvent((evt: GatewayEventFrame) => {
       if (evt.event !== 'chat') return
-      const payload = evt.payload as unknown as ChatEventPayload | undefined
-      if (!payload) return
+      const payload = evt.payload as unknown as GatewayChatPayload
+      if (!payload || !payload.state) return
 
-      switch (payload.kind) {
+      const text = getTextFromPayload(payload)
+
+      switch (payload.state) {
         case 'delta': {
-          if (payload.text) {
-            streamingRef.current += payload.text
+          if (text) {
+            // Gateway sends full accumulated text in each delta, so replace
+            // rather than append to avoid duplication
+            streamingRef.current = text
             setStreamingContent(streamingRef.current)
           }
           if (payload.runId) {
@@ -60,13 +83,8 @@ export default function ChatView() {
           break
         }
         case 'final': {
-          const finalContent = streamingRef.current
-          if (finalContent) {
-            setMessages((prev) => [
-              ...prev,
-              { id: nextId(), role: 'assistant', content: finalContent },
-            ])
-          }
+          const finalContent = streamingRef.current || text || ''
+          setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content: finalContent }])
           streamingRef.current = ''
           setStreamingContent('')
           runIdRef.current = null
@@ -74,11 +92,8 @@ export default function ChatView() {
           break
         }
         case 'error': {
-          const errorText = payload.error || payload.text || '未知错误'
-          setMessages((prev) => [
-            ...prev,
-            { id: nextId(), role: 'assistant', content: `错误: ${errorText}` },
-          ])
+          const errorText = text || '未知错误'
+          setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content: `错误: ${errorText}` }])
           streamingRef.current = ''
           setStreamingContent('')
           runIdRef.current = null
@@ -109,42 +124,25 @@ export default function ChatView() {
     if (!value.trim() || loading || !client) return
 
     if (!connected) {
-      setMessages((prev) => [
-        ...prev,
-        { id: nextId(), role: 'assistant', content: '连接已断开，请等待重连...' },
-      ])
+      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content: '连接已断开，请等待重连...' }])
       return
     }
 
-    setMessages((prev) => [
-      ...prev,
-      { id: nextId(), role: 'user', content: value },
-    ])
+    setMessages((prev) => [...prev, { id: nextId(), role: 'user', content: value }])
     setLoading(true)
     streamingRef.current = ''
     setStreamingContent('')
 
     try {
       await client.request('chat.send', {
-        sessionKey: 'main',
+        sessionKey: 'agent:main:main',
         message: value,
         idempotencyKey: idempotencyKey(),
       })
     } catch (e) {
-      setMessages((prev) => [
-        ...prev,
-        { id: nextId(), role: 'assistant', content: '发送失败: ' + String(e) },
-      ])
+      const err = e as Error
+      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content: '发送失败: ' + err.message }])
       setLoading(false)
-    }
-  }
-
-  const handleAbort = async () => {
-    if (!client) return
-    try {
-      await client.request('chat.abort', { sessionKey: 'main' })
-    } catch (e) {
-      console.error('Abort failed:', e)
     }
   }
 
@@ -177,37 +175,19 @@ export default function ChatView() {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ flex: 1, overflow: 'auto' }}>
-        {(!client || showConnecting) && (
-          <Bubble.List items={[]} />
-        )}
-        {client && !showConnecting && (
-          <Bubble.List items={bubbleItems} />
-        )}
+        {(!client || showConnecting) && <Bubble.List items={[]} />}
+        {client && !showConnecting && <Bubble.List items={bubbleItems} />}
       </div>
-      <div style={{ borderTop: '1px solid #f0f0f0', position: 'relative' }}>
-        {loading && (
-          <div style={{ position: 'absolute', top: -32, right: 16 }}>
-            <Text
-              type="secondary"
-              style={{ cursor: 'pointer', fontSize: 12 }}
-              onClick={handleAbort}
-            >
-              [停止生成]
-            </Text>
-          </div>
-        )}
-        <Sender
-          value={inputValue}
-          placeholder={showConnecting ? '等待连接...' : '输入消息...'}
-          loading={loading || showConnecting}
-          disabled={showConnecting}
-          onSubmit={(v) => {
-            handleSend(v)
-            setInputValue('')
-          }}
-          onChange={setInputValue}
-        />
-      </div>
+      <Sender
+        value={inputValue}
+        placeholder={showConnecting ? '等待连接...' : '输入消息...'}
+        loading={loading || showConnecting}
+        onSubmit={(v) => {
+          handleSend(v)
+          setInputValue('')
+        }}
+        onChange={setInputValue}
+      />
     </div>
   )
 }

@@ -130,13 +130,13 @@ vclaw/
 
 | 组件 | 路由 | 职责 |
 |------|------|------|
-| `EnvCheckPage` | `/env-check` | 检测 Node.js + OpenClaw 是否安装 |
+| `EnvCheck` | `/env-check` | 检测 Node.js + OpenClaw 是否安装 |
 | `AppLayout` | `/` | 布局容器，管理 GatewayClient 连接 |
 | `ChatView` | `/chat` | 对话界面，WebSocket 流式聊天 |
-| `ChannelPanel` | `/channels` | 渠道配置面板 |
-| `LogPanel` | `/logs` | 日志面板 |
-| `ConfigPage` | `/config` | 配置查看（`~/.openclaw/openclaw.json`） |
-| `SettingsPage` | `/settings` | 设置页（进程管理） |
+| `Channel` | `/channels` | 渠道配置面板 |
+| `Log` | `/logs` | 日志面板 |
+| `Config` | `/config` | 配置查看（`~/.openclaw/openclaw.json`） |
+| `Gateway` | `/gateway` | 网关管理（进程启停） |
 | `Sidebar` | - | 侧边栏导航 |
 
 ## 五、Tauri Commands

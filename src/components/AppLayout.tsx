@@ -1,78 +1,23 @@
 import { Layout } from 'antd'
 import { Outlet } from 'react-router'
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
 import Sidebar from './Sidebar'
-import {
-  startOpenClaw,
-  stopOpenClaw,
-  getOpenClawStatus,
-  getOpenClawVersion,
-  GatewayClient,
-} from '../lib/openclaw-adapter'
+import { useGateway } from '../hooks/useGateway'
 import { GatewayContext } from '../contexts/GatewayContext'
 
 const { Sider, Content } = Layout
 
 export default function AppLayout() {
-  const [collapsed, setCollapsed] = useState(false)
-  const [version, setVersion] = useState('')
-  const [gatewayConnected, setGatewayConnected] = useState(false)
-  const clientRef = useRef<GatewayClient | null>(null)
-
-  const start = useCallback(async () => {
-    if (!clientRef.current) return
-    try {
-      const currentStatus = await getOpenClawStatus()
-      let gatewayUrl = currentStatus.gatewayUrl
-      if (!currentStatus.running || !gatewayUrl) {
-        gatewayUrl = await startOpenClaw()
-      }
-      await new Promise((r) => setTimeout(r, 3000))
-      await clientRef.current.connect(gatewayUrl)
-    } catch (err) {
-      console.error('Failed to start gateway:', err)
-      throw err
-    }
-  }, [])
-
-  const stop = useCallback(async () => {
-    if (!clientRef.current) return
-    try {
-      await stopOpenClaw()
-    } catch (err) {
-      console.error('Failed to stop gateway:', err)
-    }
-    clientRef.current.disconnect()
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    const client = new GatewayClient()
-    clientRef.current = client
-
-    client.onConnectionChange((connected) => {
-      if (!cancelled) {
-        setGatewayConnected(connected)
-      }
-    })
-
-    getOpenClawVersion().then(setVersion).catch(console.error)
-
-    return () => {
-      cancelled = true
-      client.disconnect()
-      clientRef.current = null
-    }
-  }, [])
+  const { client, gatewayConnected, version, start, stop } = useGateway()
 
   const contextValue = useMemo(
     () => ({
-      client: clientRef.current,
+      client,
       gatewayConnected,
       start,
       stop,
     }),
-    [gatewayConnected, start, stop]
+    [client, gatewayConnected, start, stop]
   )
 
   return (
@@ -81,7 +26,7 @@ export default function AppLayout() {
         <Sider
           width={180}
           collapsedWidth={64}
-          collapsed={collapsed}
+          collapsed={false}
           style={{
             flexDirection: 'column',
             background: '#fff',
@@ -89,8 +34,8 @@ export default function AppLayout() {
           }}
         >
           <Sidebar
-            collapsed={collapsed}
-            onCollapse={setCollapsed}
+            collapsed={false}
+            onCollapse={() => {}}
             gatewayConnected={gatewayConnected}
             version={version}
           />

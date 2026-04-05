@@ -4,7 +4,7 @@ import { Typography } from 'antd'
 
 const { Text } = Typography
 
-export default function LogPanel() {
+export default function Log() {
   const [logs, setLogs] = useState<string[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
 

@@ -1,12 +1,12 @@
 import { createBrowserRouter, Navigate } from 'react-router'
 import { useEffect } from 'react'
-import EnvCheckPage from './pages/EnvCheckPage'
+import EnvCheck from './pages/EnvCheck'
 import AppLayout from './components/AppLayout'
 import ChatView from './pages/ChatView'
-import ChannelPanel from './pages/ChannelPanel'
-import LogPanel from './pages/LogPanel'
-import SettingsPage from './pages/SettingsPage'
-import ConfigPage from './pages/ConfigPage'
+import Channel from './pages/Channel'
+import Log from './pages/Log'
+import Gateway from './pages/Gateway'
+import Config from './pages/Config'
 
 function RootIndex() {
   const ready = sessionStorage.getItem('envReady') === 'true'
@@ -25,7 +25,7 @@ function RootIndex() {
 const router = createBrowserRouter([
   {
     path: '/env-check',
-    element: <EnvCheckPage />,
+    element: <EnvCheck />,
   },
   {
     path: '/',
@@ -41,23 +41,23 @@ const router = createBrowserRouter([
       },
       {
         path: 'channels',
-        element: <ChannelPanel />,
+        element: <Channel />,
       },
       {
         path: 'logs',
         element: (
           <div style={{ padding: 16, height: '100%' }}>
-            <LogPanel />
+            <Log />
           </div>
         ),
       },
       {
-        path: 'settings',
-        element: <SettingsPage />,
+        path: 'gateway',
+        element: <Gateway />,
       },
       {
         path: 'config',
-        element: <ConfigPage />,
+        element: <Config />,
       },
     ],
   },

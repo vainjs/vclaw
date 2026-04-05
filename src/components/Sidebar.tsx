@@ -1,5 +1,13 @@
 import { Menu, Button, Badge, Typography } from 'antd'
-import { MessageOutlined, LaptopOutlined, TeamOutlined, MenuFoldOutlined, MenuUnfoldOutlined, FileTextOutlined, ToolOutlined } from '@ant-design/icons'
+import {
+  MessageOutlined,
+  LaptopOutlined,
+  TeamOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  FileTextOutlined,
+  ToolOutlined,
+} from '@ant-design/icons'
 import { NavLink, useLocation } from 'react-router'
 
 const { Text } = Typography
@@ -8,27 +16,27 @@ const items = [
   {
     key: 'chat',
     icon: <MessageOutlined />,
-    label: <NavLink to="/chat">聊天</NavLink>,
+    label: <NavLink to='/chat'>聊天</NavLink>,
   },
   {
     key: 'channels',
     icon: <TeamOutlined />,
-    label: <NavLink to="/channels">渠道</NavLink>,
+    label: <NavLink to='/channels'>渠道</NavLink>,
   },
   {
     key: 'logs',
     icon: <FileTextOutlined />,
-    label: <NavLink to="/logs">日志</NavLink>,
+    label: <NavLink to='/logs'>日志</NavLink>,
   },
-    {
-      key: 'settings',
-      icon: <LaptopOutlined />,
-      label: <NavLink to="/settings">环境</NavLink>,
-    },
+  {
+    key: 'gateway',
+    icon: <LaptopOutlined />,
+    label: <NavLink to='/gateway'>网关</NavLink>,
+  },
   {
     key: 'config',
     icon: <ToolOutlined />,
-    label: <NavLink to="/config">配置</NavLink>,
+    label: <NavLink to='/config'>配置</NavLink>,
   },
 ]
 
@@ -39,12 +47,7 @@ interface SidebarProps {
   version: string
 }
 
-export default function Sidebar({
-  collapsed,
-  onCollapse,
-  gatewayConnected,
-  version,
-}: SidebarProps) {
+export default function Sidebar({ collapsed, onCollapse, gatewayConnected, version }: SidebarProps) {
   const location = useLocation()
 
   const selectedKey = location.pathname.split('/')[1] || 'chat'

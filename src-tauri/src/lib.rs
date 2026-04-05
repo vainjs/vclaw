@@ -1,11 +1,10 @@
-use std::process::{Child, Command, Stdio};
+use std::process::Command;
 use std::sync::Mutex;
-use std::thread;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 
+// AppState kept for backward compatibility with invoke_handler, but no longer tracks child process
 struct AppState {
-    openclaw_process: Mutex<Option<Child>>,
-    gateway_port: Mutex<Option<u16>>,
+    _placeholder: Mutex<Option<()>>,
 }
 
 #[tauri::command]
@@ -33,87 +32,101 @@ fn check_node_env() -> Result<serde_json::Value, String> {
     }))
 }
 
-#[tauri::command]
-fn start_openclaw(
-    state: tauri::State<AppState>,
-    app_handle: tauri::AppHandle,
-) -> Result<String, String> {
-    let mut guard = state.openclaw_process.lock().map_err(|e| e.to_string())?;
-    if guard.is_some() {
-        return Err("openclaw already running".to_string());
-    }
+const GATEWAY_PORT: u16 = 18789;
 
-    let app_data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(&app_data_dir).map_err(|e| e.to_string())?;
-
-    let gateway_port = 18789;
-
-    let mut cmd = Command::new("openclaw");
-
-    cmd.current_dir(&app_data_dir)
-        .arg("gateway")
-        .arg("run")
-        .arg("--port")
-        .arg(gateway_port.to_string())
-        .arg("--auth")
-        .arg("none")
-        .arg("--log-level")
-        .arg("info")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
-
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-    let app_handle_stdout = app_handle.clone();
-    let app_handle_stderr = app_handle.clone();
-
-    thread::spawn(move || {
-        use std::io::{BufRead, BufReader};
-        if let Some(stdout) = stdout {
-            let reader = BufReader::new(stdout);
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    let _ = app_handle_stdout.emit("openclaw-log", format!("[stdout] {}", line));
-                }
-            }
-        }
-    });
-
-    thread::spawn(move || {
-        use std::io::{BufRead, BufReader};
-        if let Some(stderr) = stderr {
-            let reader = BufReader::new(stderr);
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    let _ = app_handle_stderr.emit("openclaw-log", format!("[stderr] {}", line));
-                }
-            }
-        }
-    });
-
-    *guard = Some(child);
-
-    let mut port_guard = state.gateway_port.lock().map_err(|e| e.to_string())?;
-    *port_guard = Some(gateway_port);
-
-    let gateway_url = format!("ws://127.0.0.1:{}", gateway_port);
-    Ok(gateway_url)
+fn is_gateway_running() -> bool {
+    std::net::TcpStream::connect_timeout(
+        &std::net::SocketAddr::from(([127, 0, 0, 1], GATEWAY_PORT)),
+        std::time::Duration::from_millis(500),
+    )
+    .is_ok()
 }
 
 #[tauri::command]
-fn stop_openclaw(state: tauri::State<AppState>) -> Result<(), String> {
-    let mut guard = state.openclaw_process.lock().map_err(|e| e.to_string())?;
-    if let Some(mut child) = guard.take() {
-        child.kill().map_err(|e| e.to_string())?;
+async fn start_openclaw() -> Result<String, String> {
+    use futures_channel::oneshot;
+    if is_gateway_running() {
+        return Ok(format!("ws://127.0.0.1:{}", GATEWAY_PORT));
     }
-    let mut port_guard = state.gateway_port.lock().map_err(|e| e.to_string())?;
-    *port_guard = None;
+    let output = Command::new("openclaw")
+        .args(["gateway", "start"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    // Wait for server to be ready in background thread (up to 10s)
+    let (tx, rx): (futures_channel::oneshot::Sender<Result<(), String>>, _) = oneshot::channel();
+    std::thread::spawn(move || {
+        let start = std::time::Instant::now();
+        while start.elapsed().as_secs() < 10 {
+            if std::net::TcpStream::connect_timeout(
+                &std::net::SocketAddr::from(([127, 0, 0, 1], GATEWAY_PORT)),
+                std::time::Duration::from_millis(50),
+            )
+            .is_ok()
+            {
+                let _ = tx.send(Ok(()));
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let _ = tx.send(Err("gateway start timeout".to_string()));
+    });
+    let _ = match rx.await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(e),
+        Err(e) => Err(e.to_string()),
+    }?;
+    Ok(format!("ws://127.0.0.1:{}", GATEWAY_PORT))
+}
+
+#[tauri::command]
+async fn stop_openclaw() -> Result<(), String> {
+    use futures_channel::oneshot;
+    let output = Command::new("openclaw")
+        .args(["gateway", "stop"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    // Wait for server to actually stop (up to 10s)
+    let (tx, rx): (futures_channel::oneshot::Sender<Result<(), String>>, _) = oneshot::channel();
+    std::thread::spawn(move || {
+        let start = std::time::Instant::now();
+        while start.elapsed().as_secs() < 10 {
+            if !std::net::TcpStream::connect_timeout(
+                &std::net::SocketAddr::from(([127, 0, 0, 1], GATEWAY_PORT)),
+                std::time::Duration::from_millis(50),
+            )
+            .is_ok()
+            {
+                let _ = tx.send(Ok(()));
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let _ = tx.send(Err("gateway stop timeout".to_string()));
+    });
+    let _ = match rx.await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(e),
+        Err(e) => Err(e.to_string()),
+    }?;
     Ok(())
+}
+
+#[tauri::command]
+fn restart_openclaw() -> Result<String, String> {
+    let output = Command::new("openclaw")
+        .args(["gateway", "restart"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    Ok(format!("ws://127.0.0.1:{}", GATEWAY_PORT))
 }
 
 #[tauri::command]
@@ -133,14 +146,11 @@ fn get_openclaw_version() -> Result<String, String> {
 }
 
 #[tauri::command]
-fn get_openclaw_status(state: tauri::State<AppState>) -> Result<serde_json::Value, String> {
-    let guard = state.openclaw_process.lock().map_err(|e| e.to_string())?;
-    let running = guard.is_some();
-    let port_guard = state.gateway_port.lock().map_err(|e| e.to_string())?;
-    let gateway_url = port_guard.map(|p| format!("ws://127.0.0.1:{}", p));
+fn get_openclaw_status(_state: tauri::State<AppState>) -> Result<serde_json::Value, String> {
+    let running = is_gateway_running();
     Ok(serde_json::json!({
         "running": running,
-        "gatewayUrl": gateway_url
+        "gatewayUrl": format!("ws://127.0.0.1:{}", GATEWAY_PORT)
     }))
 }
 
@@ -211,6 +221,20 @@ fn read_global_config() -> Result<String, String> {
 }
 
 #[tauri::command]
+fn get_gateway_token() -> Result<String, String> {
+    let home = dirs::home_dir().ok_or("Cannot find home directory")?;
+    let config_path = home.join(".openclaw").join("openclaw.json");
+    let content = std::fs::read_to_string(&config_path)
+        .map_err(|e| format!("Failed to read config: {}", e))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse config: {}", e))?;
+    json["gateway"]["auth"]["token"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "gateway token not found".to_string())
+}
+
+#[tauri::command]
 fn get_channels(app_handle: tauri::AppHandle) -> Result<Vec<serde_json::Value>, String> {
     let vclaw_data = app_handle
         .path()
@@ -242,17 +266,18 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
-            openclaw_process: Mutex::new(None),
-            gateway_port: Mutex::new(None),
+            _placeholder: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             check_node_env,
             start_openclaw,
             stop_openclaw,
+            restart_openclaw,
             get_openclaw_status,
             get_openclaw_version,
             check_env,
             read_global_config,
+            get_gateway_token,
             get_channels,
             export_config,
             import_config

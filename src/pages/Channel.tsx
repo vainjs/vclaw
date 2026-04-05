@@ -11,7 +11,7 @@ interface Channel {
   type: string
 }
 
-export default function ChannelPanel() {
+export default function Channel() {
   const [channels, setChannels] = useState<Channel[]>([])
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)

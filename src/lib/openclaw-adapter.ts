@@ -31,7 +31,37 @@ export async function getOpenClawVersion(): Promise<string> {
   return invoke<string>('get_openclaw_version');
 }
 
-// --- Gateway Event Types ---
+export type ProcessStatus = 'idle' | 'running' | 'stopped';
+
+export class ProcessManager {
+  get status(): ProcessStatus {
+    return 'idle';
+  }
+
+  async start(): Promise<string> {
+    const status = await getOpenClawStatus();
+    if (status.running && status.gatewayUrl) {
+      return status.gatewayUrl;
+    }
+    return startOpenClaw();
+  }
+
+  async stop(): Promise<void> {
+    await stopOpenClaw();
+  }
+
+  async restart(): Promise<string> {
+    return restartOpenClaw();
+  }
+
+  async getStatus(): Promise<OpenClawStatus> {
+    return getOpenClawStatus();
+  }
+}
+
+export async function restartOpenClaw(): Promise<string> {
+  return invoke<string>('restart_openclaw');
+}
 
 export interface GatewayEventFrame {
   type: 'event';
@@ -51,39 +81,82 @@ export interface ChatEventPayload {
 type EventCallback = (evt: GatewayEventFrame) => void;
 type ConnectionCallback = (connected: boolean) => void;
 
-// --- GatewayClient ---
+function generateId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 export class GatewayClient {
   private ws: WebSocket | null = null;
   private url = '';
+  private token = '';
   private pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private eventCallbacks: EventCallback[] = [];
   private connectionCallbacks: ConnectionCallback[] = [];
-  private nextId = 1;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private backoffMs = 750;
+  private backoffMs = 800;
   private closed = false;
   private _connected = false;
-  private connectNonce: string | null = null;
   private connectSent = false;
+  private connectTimer: ReturnType<typeof setTimeout> | null = null;
 
   get connected(): boolean {
     return this._connected;
   }
 
-  async connect(url: string): Promise<void> {
+  getUrl(): string {
+    return this.url;
+  }
+
+  setToken(token: string): void {
+    this.token = token;
+  }
+
+  async connect(url: string, token?: string): Promise<void> {
     this.url = url;
+    if (token) this.token = token;
     this.closed = false;
-    await this.doConnect();
+    return new Promise((resolve, reject) => {
+      let resolved = false;
+      const onChange = (connected: boolean) => {
+        if (resolved) return;
+        if (connected) {
+          resolved = true;
+          unsubscribe();
+          resolve();
+        } else {
+          // Connection dropped before we resolved
+          unsubscribe();
+          reject(new Error('connection lost'));
+        }
+      };
+      const unsubscribe = this.onConnectionChange(onChange);
+      this.doConnect();
+      // Timeout after 10s
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          unsubscribe();
+          reject(new Error('connection timeout'));
+        }
+      }, 10000);
+    });
   }
 
   disconnect(): void {
     this.closed = true;
+    if (this.connectTimer !== null) {
+      clearTimeout(this.connectTimer);
+      this.connectTimer = null;
+    }
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    this.flushPending('Client disconnected');
+    this.flushPending(new Error('gateway client stopped'));
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -95,13 +168,10 @@ export class GatewayClient {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('WebSocket not connected');
     }
-    const id = String(this.nextId++);
+    const id = generateId();
     const frame = { type: 'req', id, method, params: params ?? {} };
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, {
-        resolve: resolve as (v: unknown) => void,
-        reject,
-      });
+      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
       this.ws!.send(JSON.stringify(frame));
     });
   }
@@ -120,80 +190,84 @@ export class GatewayClient {
     };
   }
 
-  // --- Private ---
+  private doConnect(): void {
+    console.log(`[GatewayClient] Connecting to ${this.url}`);
+    const ws = new WebSocket(this.url);
+    this.ws = ws;
+    this.connectSent = false;
 
-  private doConnect(): Promise<unknown> {
-    return new Promise((resolve, reject) => {
-      console.log(`[GatewayClient] Connecting to ${this.url}`);
-      const ws = new WebSocket(this.url);
-      this.ws = ws;
-      this.connectNonce = null;
-      this.connectSent = false;
-
-      ws.onopen = () => {
-        console.log('[GatewayClient] WebSocket opened, waiting for connect.challenge...');
-        this.backoffMs = 750;
-      };
-
-      ws.onerror = (e) => {
-        console.error('[GatewayClient] WebSocket error:', e);
-      };
-
-      ws.onmessage = (event) => {
-        this.handleMessage(event.data, resolve, reject);
-      };
-
-      ws.onclose = (e) => {
-        console.log(`[GatewayClient] WebSocket closed (code=${e.code}, reason=${e.reason || 'none'}, wasConnected=${this._connected})`);
-        const wasConnected = this._connected;
-        this.setConnected(false);
-        if (!this._connected && !this.connectSent) {
-          reject(new Error(`Connection closed (${e.code}): ${e.reason || 'server rejected connection'}`));
-        }
-        this.flushPending('Connection closed');
-        this.ws = null;
-        if (!this.closed && wasConnected) {
-          console.log('[GatewayClient] Scheduling reconnect...');
-          this.scheduleReconnect();
-        }
-      };
+    ws.addEventListener('open', () => this.queueConnect());
+    ws.addEventListener('message', (ev) => this.handleMessage(String(ev.data ?? '')));
+    ws.addEventListener('close', (e) => {
+      const wasConnected = this._connected;
+      this.setConnected(false);
+      this.flushPending(new Error(`gateway closed (${e.code}): ${e.reason || ''}`));
+      this.ws = null;
+      if (!this.closed && (wasConnected || this.connectSent)) {
+        console.log('[GatewayClient] Scheduling reconnect...');
+        this.scheduleReconnect();
+      }
     });
+    ws.addEventListener('error', () => {});
   }
 
-  private sendConnect(resolve: (v: unknown) => void, reject: (e: Error) => void): void {
+  private scheduleReconnect(): void {
+    if (this.closed) return;
+    const delay = this.backoffMs;
+    this.backoffMs = Math.min(this.backoffMs * 1.7, 15000);
+    this.reconnectTimer = setTimeout(() => {
+      if (this.closed) return;
+      this.doConnect();
+    }, delay);
+  }
+
+  private queueConnect(): void {
+    this.connectSent = false;
+    if (this.connectTimer !== null) {
+      clearTimeout(this.connectTimer);
+    }
+    this.connectTimer = setTimeout(() => {
+      this.connectTimer = null;
+      void this.sendConnect();
+    }, 750);
+  }
+
+  private async sendConnect(): Promise<void> {
     if (this.connectSent) return;
     this.connectSent = true;
-    const nonce = this.connectNonce;
-    this.request<Record<string, unknown>>('connect', {
-      minProtocol: 3,
-      maxProtocol: 3,
-      client: {
-        id: 'vclaw',
-        version: '0.2.0',
-        platform: 'desktop',
-        mode: 'webchat',
-      },
-      role: 'operator',
-      scopes: ['operator.admin', 'operator.read', 'operator.write', 'operator.approvals', 'operator.pairing'],
-      caps: ['tool-events'],
-      device: nonce ? {
-        id: 'vclaw-device',
-        publicKey: '',
-        signature: '',
-        signedAt: Date.now(),
-        nonce,
-      } : undefined,
-    }).then((hello) => {
-      console.log('[GatewayClient] Connect handshake OK', hello);
+    if (this.connectTimer !== null) {
+      clearTimeout(this.connectTimer);
+      this.connectTimer = null;
+    }
+    try {
+      const connectParams: Record<string, unknown> = {
+        minProtocol: 3,
+        maxProtocol: 3,
+        client: {
+          id: 'openclaw-control-ui',
+          version: '0.2.0',
+          platform: typeof navigator !== 'undefined' ? navigator.platform : 'web',
+          mode: 'ui',
+        },
+        role: 'operator',
+        scopes: ['operator.admin', 'operator.read', 'operator.write', 'operator.approvals', 'operator.pairing'],
+        caps: ['tool-events'],
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+        locale: typeof navigator !== 'undefined' ? navigator.language : 'en',
+      };
+      if (this.token) {
+        connectParams.auth = { token: this.token };
+      }
+      await this.request<Record<string, unknown>>('connect', connectParams);
+      this.backoffMs = 800;
       this.setConnected(true);
-      resolve(hello);
-    }).catch((err: Error) => {
+    } catch (err) {
       console.error('[GatewayClient] Connect handshake failed:', err);
-      reject(err);
-    });
+      this.ws?.close(4008, 'connect failed');
+    }
   }
 
-  private handleMessage(raw: string, resolve: (v: unknown) => void, reject: (e: Error) => void): void {
+  private handleMessage(raw: string): void {
     let data: Record<string, unknown>;
     try {
       data = JSON.parse(raw);
@@ -219,11 +293,11 @@ export class GatewayClient {
     if (data.type === 'event') {
       const evt = data as unknown as GatewayEventFrame;
       if (evt.event === 'connect.challenge') {
-        const payload = evt.payload as { nonce?: string } | undefined;
-        if (payload?.nonce) {
-          console.log('[GatewayClient] Received connect.challenge, sending connect with nonce');
-          this.connectNonce = payload.nonce;
-          this.sendConnect(resolve, reject);
+        const nonce = (evt.payload as { nonce?: string })?.nonce;
+        if (nonce) {
+          // Reset so we can send a new connect
+          this.connectSent = false;
+          void this.sendConnect();
         }
         return;
       }
@@ -234,26 +308,12 @@ export class GatewayClient {
           console.error('[GatewayClient] event callback error:', err);
         }
       }
-      return;
     }
   }
 
-  private scheduleReconnect(): void {
-    if (this.reconnectTimer) return;
-    console.log(`[GatewayClient] Reconnecting in ${this.backoffMs}ms (backoff=${this.backoffMs})`);
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      if (this.closed) return;
-      this.doConnect().catch(() => {
-        this.backoffMs = Math.min(this.backoffMs * 2, 15000);
-        this.scheduleReconnect();
-      });
-    }, this.backoffMs);
-  }
-
-  private flushPending(reason: string): void {
+  private flushPending(err: Error): void {
     for (const [, entry] of this.pending) {
-      entry.reject(new Error(reason));
+      entry.reject(err);
     }
     this.pending.clear();
   }
@@ -303,4 +363,6 @@ export async function readGlobalConfig(): Promise<string> {
   return invoke<string>('read_global_config');
 }
 
-
+export async function getGatewayToken(): Promise<string> {
+  return invoke<string>('get_gateway_token');
+}
