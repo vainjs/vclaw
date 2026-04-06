@@ -4015,6 +4015,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "windows-sys 0.61.2",
 ]
@@ -4377,12 +4378,12 @@ name = "vclaw"
 version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
- "futures-channel",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
+ "tokio",
 ]
 
 [[package]]

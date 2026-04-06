@@ -12,8 +12,8 @@ export default function AppLayout() {
 
   const contextValue = useMemo(
     () => ({
-      client,
       gatewayConnected,
+      client,
       start,
       stop,
     }),
@@ -33,10 +33,28 @@ export default function AppLayout() {
             display: 'flex',
           }}
         >
-          <Sidebar collapsed={false} onCollapse={() => {}} gatewayConnected={gatewayConnected} version={version} />
+          <Sidebar
+            collapsed={false}
+            onCollapse={() => {}}
+            gatewayConnected={gatewayConnected}
+            version={version}
+          />
         </Sider>
-        <Content style={{ borderRadius: '10px', padding: '6px', background: '#f5f5f5' }}>
-          <main style={{ height: '100%', borderRadius: '10px', background: '#fff', overflowY: 'auto' }}>
+        <Content
+          style={{
+            borderRadius: '10px',
+            padding: '6px',
+            background: '#f5f5f5',
+          }}
+        >
+          <main
+            style={{
+              height: '100%',
+              borderRadius: '10px',
+              background: '#fff',
+              overflowY: 'auto',
+            }}
+          >
             <Outlet />
           </main>
         </Content>

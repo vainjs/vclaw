@@ -1,6 +1,6 @@
 import { Card, Spin, Typography } from 'antd'
 import { useEffect, useState } from 'react'
-import { readGlobalConfig } from '../lib/openclaw-adapter'
+import { readGlobalConfig } from '../lib/openclaw-commands'
 
 const { Text } = Typography
 
@@ -32,7 +32,7 @@ export default function Config() {
     return (
       <div style={{ padding: 16 }}>
         <Card>
-          <Text type='secondary'>配置文件不存在或无法读取</Text>
+          <Text type="secondary">配置文件不存在或无法读取</Text>
         </Card>
       </div>
     )
@@ -45,9 +45,9 @@ export default function Config() {
     return (
       <div style={{ padding: 16 }}>
         <Card
-          title='配置文件'
+          title="配置文件"
           extra={
-            <Text type='secondary' style={{ fontSize: 12 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
               ~/.openclaw/openclaw.json
             </Text>
           }
@@ -63,9 +63,9 @@ export default function Config() {
   return (
     <div style={{ padding: 16, height: '100%', overflow: 'auto' }}>
       <Card
-        title='配置文件'
+        title="配置文件"
         extra={
-          <Text type='secondary' style={{ fontSize: 12 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
             ~/.openclaw/openclaw.json
           </Text>
         }

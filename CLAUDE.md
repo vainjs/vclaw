@@ -152,3 +152,12 @@ docs: update API documentation
 ```
 
 类型：feat, fix, docs, style, refactor, perf, test, build, chore
+
+**注意：** commit 时只能使用 git 配置的用户信息，不使用 Co-Authored-By。
+
+## 代码规范
+
+编写 React/TypeScript 代码时，调用 `superpowers:react-code-standards` skill 遵循代码规范，包括：
+- React hooks 完整依赖声明
+- 组件和 hook 文件组织
+- TypeScript 类型规范

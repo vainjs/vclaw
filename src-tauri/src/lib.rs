@@ -1,26 +1,43 @@
-use std::process::Command;
-use std::sync::Mutex;
 use tauri::Manager;
+use tokio::process::Command;
 
-struct AppState {
-    _placeholder: Mutex<Option<()>>,
+fn get_config_port() -> u16 {
+    if let Ok(port) = std::env::var("OPENCLAW_GATEWAY_PORT") {
+        if let Ok(port) = port.parse() {
+            return port;
+        }
+    }
+    if let Some(home) = dirs::home_dir() {
+        let config_path = home.join(".openclaw").join("openclaw.json");
+        if let Ok(content) = std::fs::read_to_string(&config_path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(port) = json["gateway"]["port"].as_u64() {
+                    return port as u16;
+                }
+            }
+        }
+    }
+    18789
 }
 
 #[tauri::command]
-fn check_node_env() -> Result<serde_json::Value, String> {
-    let node_version = std::process::Command::new("node")
+async fn check_node_env() -> Result<serde_json::Value, String> {
+    let node_version = Command::new("node")
         .arg("--version")
         .output()
+        .await
         .map_err(|e| e.to_string())?
         .stdout;
-    let node_path = std::process::Command::new("which")
+    let node_path = Command::new("which")
         .arg("node")
         .output()
+        .await
         .map_err(|e| e.to_string())?
         .stdout;
-    let npm_version = std::process::Command::new("npm")
+    let npm_version = Command::new("npm")
         .arg("--version")
         .output()
+        .await
         .map_err(|e| e.to_string())?
         .stdout;
 
@@ -31,108 +48,42 @@ fn check_node_env() -> Result<serde_json::Value, String> {
     }))
 }
 
-const GATEWAY_PORT: u16 = 18789;
-
-fn is_gateway_running() -> bool {
-    std::net::TcpStream::connect_timeout(
-        &std::net::SocketAddr::from(([127, 0, 0, 1], GATEWAY_PORT)),
-        std::time::Duration::from_millis(500),
-    )
-    .is_ok()
-}
-
 #[tauri::command]
 async fn start_openclaw() -> Result<String, String> {
-    use futures_channel::oneshot;
-    if is_gateway_running() {
-        return Ok(format!("ws://127.0.0.1:{}", GATEWAY_PORT));
-    }
+    let port = get_config_port();
+    // Launch via launchd
     let output = Command::new("openclaw")
         .args(["gateway", "start"])
         .output()
+        .await
         .map_err(|e| e.to_string())?;
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
     }
-    // Wait for server to be ready in background thread (up to 10s)
-    let (tx, rx): (futures_channel::oneshot::Sender<Result<(), String>>, _) = oneshot::channel();
-    std::thread::spawn(move || {
-        let start = std::time::Instant::now();
-        while start.elapsed().as_secs() < 10 {
-            if std::net::TcpStream::connect_timeout(
-                &std::net::SocketAddr::from(([127, 0, 0, 1], GATEWAY_PORT)),
-                std::time::Duration::from_millis(50),
-            )
-            .is_ok()
-            {
-                let _ = tx.send(Ok(()));
-                return;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-        let _ = tx.send(Err("gateway start timeout".to_string()));
-    });
-    let _ = match rx.await {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(e)) => Err(e),
-        Err(e) => Err(e.to_string()),
-    }?;
-    Ok(format!("ws://127.0.0.1:{}", GATEWAY_PORT))
+    // Return immediately; WebSocket reconnection handles pending state
+    Ok(format!("ws://127.0.0.1:{}", port))
 }
 
 #[tauri::command]
 async fn stop_openclaw() -> Result<(), String> {
-    use futures_channel::oneshot;
     let output = Command::new("openclaw")
         .args(["gateway", "stop"])
         .output()
+        .await
         .map_err(|e| e.to_string())?;
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
     }
-    // Wait for server to actually stop (up to 10s)
-    let (tx, rx): (futures_channel::oneshot::Sender<Result<(), String>>, _) = oneshot::channel();
-    std::thread::spawn(move || {
-        let start = std::time::Instant::now();
-        while start.elapsed().as_secs() < 10 {
-            if !std::net::TcpStream::connect_timeout(
-                &std::net::SocketAddr::from(([127, 0, 0, 1], GATEWAY_PORT)),
-                std::time::Duration::from_millis(50),
-            )
-            .is_ok()
-            {
-                let _ = tx.send(Ok(()));
-                return;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-        let _ = tx.send(Err("gateway stop timeout".to_string()));
-    });
-    let _ = match rx.await {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(e)) => Err(e),
-        Err(e) => Err(e.to_string()),
-    }?;
+    // Return immediately; WebSocket close event will update connected state
     Ok(())
 }
 
 #[tauri::command]
-fn restart_openclaw() -> Result<String, String> {
-    let output = Command::new("openclaw")
-        .args(["gateway", "restart"])
-        .output()
-        .map_err(|e| e.to_string())?;
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-    }
-    Ok(format!("ws://127.0.0.1:{}", GATEWAY_PORT))
-}
-
-#[tauri::command]
-fn get_openclaw_version() -> Result<String, String> {
+async fn get_openclaw_version() -> Result<String, String> {
     let output = Command::new("openclaw")
         .arg("--version")
         .output()
+        .await
         .map_err(|e| e.to_string())?;
 
     let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -140,23 +91,45 @@ fn get_openclaw_version() -> Result<String, String> {
         .strip_prefix("OpenClaw ")
         .and_then(|s| s.split_whitespace().next())
         .unwrap_or(&raw);
-    let version = format!("v{}", version);
-    Ok(version)
+    Ok(format!("v{}", version))
 }
 
 #[tauri::command]
-fn get_openclaw_status(_state: tauri::State<AppState>) -> Result<serde_json::Value, String> {
-    let running = is_gateway_running();
+async fn get_openclaw_status() -> Result<serde_json::Value, String> {
+    let port = get_config_port();
+    let output = Command::new("openclaw")
+        .args(["gateway", "status", "--json"])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let running = if output.status.success() {
+        let raw = String::from_utf8_lossy(&output.stdout);
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw) {
+            let rpc_ok = json["gateway"]["rpc"]["ok"].as_bool().unwrap_or(false);
+            let started = json["service"]["status"].as_str() == Some("started");
+            started && rpc_ok
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    let gateway_url = format!("ws://127.0.0.1:{}", port);
+    let dashboard_url = format!("http://127.0.0.1:{}/", port);
+
     Ok(serde_json::json!({
         "running": running,
-        "gatewayUrl": format!("ws://127.0.0.1:{}", GATEWAY_PORT)
+        "gatewayUrl": gateway_url,
+        "dashboardUrl": dashboard_url,
+        "port": port,
     }))
 }
 
 #[tauri::command]
-fn check_env() -> Result<serde_json::Value, String> {
-    let node_output = Command::new("node").arg("--version").output();
-
+async fn check_env() -> Result<serde_json::Value, String> {
+    let node_output = Command::new("node").arg("--version").output().await;
     let (node_installed, node_version, node_path, npm_version) = match &node_output {
         Ok(o) if o.status.success() => {
             let version = String::from_utf8_lossy(&o.stdout)
@@ -166,11 +139,13 @@ fn check_env() -> Result<serde_json::Value, String> {
             let path = Command::new("which")
                 .arg("node")
                 .output()
+                .await
                 .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
                 .unwrap_or_default();
             let npm = Command::new("npm")
                 .arg("--version")
                 .output()
+                .await
                 .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
                 .unwrap_or_default();
             (true, version, path, npm)
@@ -178,8 +153,7 @@ fn check_env() -> Result<serde_json::Value, String> {
         _ => (false, String::new(), String::new(), String::new()),
     };
 
-    let openclaw_output = Command::new("openclaw").arg("--version").output();
-
+    let openclaw_output = Command::new("openclaw").arg("--version").output().await;
     let (openclaw_installed, openclaw_version, openclaw_path) = match &openclaw_output {
         Ok(o) if o.status.success() => {
             let raw = String::from_utf8_lossy(&o.stdout).trim().to_string();
@@ -190,6 +164,7 @@ fn check_env() -> Result<serde_json::Value, String> {
             let path = Command::new("which")
                 .arg("openclaw")
                 .output()
+                .await
                 .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
                 .unwrap_or_default();
             (true, version.to_string(), path)
@@ -264,51 +239,17 @@ fn get_channels(app_handle: tauri::AppHandle) -> Result<Vec<serde_json::Value>, 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .setup(|app| {
-            app.manage(AppState {
-                _placeholder: Mutex::new(None),
-            });
-            Ok(())
-        })
         .invoke_handler(tauri::generate_handler![
             check_node_env,
             start_openclaw,
             stop_openclaw,
-            restart_openclaw,
             get_openclaw_status,
             get_openclaw_version,
             check_env,
             read_global_config,
             get_gateway_token,
-            get_channels,
-            export_config,
-            import_config
+            get_channels
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-#[tauri::command]
-fn export_config(app_handle: tauri::AppHandle) -> Result<String, String> {
-    let vclaw_data = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
-    let config_path = vclaw_data.join("config.json");
-    if config_path.exists() {
-        std::fs::read_to_string(&config_path).map_err(|e| e.to_string())
-    } else {
-        Ok("{}".to_string())
-    }
-}
-
-#[tauri::command]
-fn import_config(app_handle: tauri::AppHandle, config: String) -> Result<(), String> {
-    let vclaw_data = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(&vclaw_data).map_err(|e| e.to_string())?;
-    let config_path = vclaw_data.join("config.json");
-    std::fs::write(&config_path, config).map_err(|e| e.to_string())
 }

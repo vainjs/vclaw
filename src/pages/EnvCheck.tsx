@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Button, Card, Space, Typography, Timeline } from 'antd'
-import { CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined } from '@ant-design/icons'
+import {
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  LoadingOutlined,
+} from '@ant-design/icons'
 import { useNavigate } from 'react-router'
-import { checkEnv } from '../lib/openclaw-adapter'
+import { checkEnv } from '../lib/openclaw-commands'
 
 const { Title, Text } = Typography
 
@@ -61,9 +65,19 @@ export default function EnvCheck() {
   }
 
   return (
-    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5' }}>
+    <div
+      style={{
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f5f5f5',
+      }}
+    >
       <Card style={{ width: 520 }}>
-        <Title level={4} style={{ marginBottom: 24, textAlign: 'center' }}>环境检测</Title>
+        <Title level={4} style={{ marginBottom: 24, textAlign: 'center' }}>
+          环境检测
+        </Title>
 
         <Timeline
           items={[
@@ -73,15 +87,19 @@ export default function EnvCheck() {
                 <div>
                   <Text strong>Node.js</Text>
                   <br />
-                  <Text type='secondary' style={{ fontSize: 12 }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
                     {nodeStatus === 'checking' ? '检测中...' : nodeDesc}
                   </Text>
                   {nodeStatus === 'error' && (
                     <>
                       <br />
-                      <Text type='danger' style={{ fontSize: 12 }}>
+                      <Text type="danger" style={{ fontSize: 12 }}>
                         请安装 Node.js LTS：
-                        <a href='https://nodejs.org/' target='_blank' rel='noopener noreferrer'>
+                        <a
+                          href="https://nodejs.org/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
                           https://nodejs.org/
                         </a>
                       </Text>
@@ -97,13 +115,13 @@ export default function EnvCheck() {
                 <div>
                   <Text strong>OpenClaw</Text>
                   <br />
-                  <Text type='secondary' style={{ fontSize: 12 }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
                     {openclawStatus === 'checking' ? '检测中...' : openclawDesc}
                   </Text>
                   {openclawStatus === 'error' && (
                     <>
                       <br />
-                      <Text type='secondary' style={{ fontSize: 12 }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
                         请运行以下命令安装：
                       </Text>
                       <br />
@@ -124,15 +142,19 @@ export default function EnvCheck() {
         />
 
         <div style={{ marginTop: 24, textAlign: 'center' }}>
-          <Space direction='vertical'>
+          <Space direction="vertical">
             <Space>
               <Button onClick={runChecks}>重新检测</Button>
-              <Button type='primary' disabled={!canProceed} onClick={() => navigate('/chat')}>
+              <Button
+                type="primary"
+                disabled={!canProceed}
+                onClick={() => navigate('/chat')}
+              >
                 进入应用
               </Button>
             </Space>
             {!canProceed && (
-              <Text type='secondary' style={{ fontSize: 12 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
                 请先完成上述安装步骤
               </Text>
             )}

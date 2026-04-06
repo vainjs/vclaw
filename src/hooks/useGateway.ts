@@ -1,85 +1,179 @@
+import type { GatewayEventFrame } from '../lib/openclaw-types'
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { get } from 'lodash-es'
+import { useWebsocket } from './useWebsocket'
+import { tryJsonParse } from '../utils'
 import {
-  getOpenClawStatus,
   getOpenClawVersion,
   getGatewayToken,
-  GatewayClient,
-  ProcessManager,
-} from '../lib/openclaw-adapter'
+  startOpenClaw,
+  stopOpenClaw,
+} from '../lib/openclaw-commands'
 
-export interface UseGatewayReturn {
-  client: GatewayClient | null
-  gatewayConnected: boolean
-  version: string
-  start: () => Promise<void>
-  stop: () => Promise<void>
+function generateId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
 }
 
-export function useGateway(): UseGatewayReturn {
-  const [gatewayConnected, setGatewayConnected] = useState(false)
+function useToken() {
+  const tokenRef = useRef('')
+
+  return useCallback(async () => {
+    if (tokenRef.current) return tokenRef.current
+    return getGatewayToken()
+  }, [])
+}
+
+export function useGateway() {
   const [version, setVersion] = useState('')
+  const pendingRef = useRef(
+    new Map<
+      string,
+      { resolve: (v: unknown) => void; reject: (e: Error) => void }
+    >()
+  )
+  const eventCallbacksRef = useRef<Array<(evt: GatewayEventFrame) => void>>([])
+  const sendRef = useRef<(data: string) => void>(() => {
+    throw new Error('not connected')
+  })
 
-  const pmRef = useRef(new ProcessManager())
-  const clientRef = useRef<GatewayClient | null>(null)
-  const tokenRef = useRef<string>('')
-  const closedRef = useRef(false)
+  const getToken = useToken()
 
-  const start = useCallback(async () => {
-    if (!clientRef.current) return
-    try {
-      const url = await pmRef.current.start()
-      await clientRef.current.connect(url, tokenRef.current)
-    } catch (err) {
-      console.error('[useGateway] Failed to start:', err)
-      throw err
-    }
-  }, [])
+  const onMessage = (event: MessageEvent) => {
+    const data = tryJsonParse(String(event.data))
 
-  const stop = useCallback(async () => {
-    closedRef.current = true
-    // Don't call disconnect() — let the WS close naturally when server stops.
-    // The ws 'close' event will fire setConnected(false) -> gatewayConnected=false
-    try {
-      await pmRef.current.stop()
-    } finally {
-      closedRef.current = false
-    }
-  }, [])
-
-  // Initialize on mount
-  useEffect(() => {
-    const client = new GatewayClient()
-    clientRef.current = client
-    closedRef.current = false
-
-    client.onConnectionChange((connected) => {
-      setGatewayConnected(connected)
-    })
-
-    getOpenClawVersion().then(setVersion).catch(() => {})
-    getGatewayToken().then((t) => { tokenRef.current = t }).catch(() => {})
-
-    // Auto-connect if gateway is already running
-    getOpenClawStatus().then(async (status) => {
-      if (status.running && status.gatewayUrl) {
-        try {
-          await client.connect(status.gatewayUrl, tokenRef.current)
-        } catch {
-          // GatewayClient handles reconnect internally
+    if (data.type === 'res') {
+      const id = data.id as string
+      const entry = pendingRef.current.get(id)
+      if (entry) {
+        pendingRef.current.delete(id)
+        if (data.ok === false) {
+          entry.reject(new Error(get(data, 'error.message', 'Request failed')))
+        } else {
+          entry.resolve(data.payload)
         }
       }
-    }).catch(() => {})
-
-    return () => {
-      closedRef.current = true
-      client.disconnect()
-      clientRef.current = null
+      return
     }
-  }, [])
+
+    if (data.type === 'event') {
+      const evt = data as unknown as GatewayEventFrame
+      if (evt.event === 'connect.challenge') {
+        doConnect()
+        return
+      }
+      for (const cb of eventCallbacksRef.current) {
+        try {
+          cb(evt)
+        } catch {
+          //
+        }
+      }
+    }
+  }
+
+  const doConnect = useCallback(async () => {
+    const params = {
+      userAgent: get(navigator, 'userAgent', ''),
+      locale: get(navigator, 'language', 'en'),
+      auth: { token: await getToken() },
+      caps: ['tool-events'],
+      minProtocol: 3,
+      maxProtocol: 3,
+      client: {
+        id: 'openclaw-control-ui',
+        version: '0.2.0',
+        mode: 'ui',
+      },
+      role: 'operator',
+      scopes: [
+        'operator.admin',
+        'operator.read',
+        'operator.write',
+        'operator.approvals',
+        'operator.pairing',
+      ],
+    }
+    const id = generateId()
+    const send = sendRef.current
+    new Promise<void>((resolve, reject) => {
+      pendingRef.current.set(id, {
+        resolve: resolve as (v: unknown) => void,
+        reject,
+      })
+      send(JSON.stringify({ type: 'req', id, method: 'connect', params }))
+    }).catch(() => {
+      pendingRef.current.delete(id)
+    })
+  }, [getToken])
+
+  const {
+    disconnect: wsDisconnect,
+    connect: wsConnect,
+    send: wsSend,
+    readyState,
+  } = useWebsocket('', {
+    manual: true,
+    onOpen: doConnect,
+    onMessage,
+    onClose: () => {
+      for (const [, entry] of pendingRef.current) {
+        entry.reject(new Error('gateway closed'))
+      }
+      pendingRef.current.clear()
+    },
+  })
+
+  const clientRef = useRef({
+    request<T = unknown>(
+      method: string,
+      params?: Record<string, unknown>
+    ): Promise<T> {
+      return new Promise((resolve, reject) => {
+        const id = generateId()
+        pendingRef.current.set(id, {
+          resolve: resolve as (v: unknown) => void,
+          reject,
+        })
+        wsSend(
+          JSON.stringify({ type: 'req', id, method, params: params ?? {} })
+        )
+      })
+    },
+    onEvent(callback: (evt: GatewayEventFrame) => void) {
+      eventCallbacksRef.current.push(callback)
+      return () => {
+        eventCallbacksRef.current = eventCallbacksRef.current.filter(
+          (cb) => cb !== callback
+        )
+      }
+    },
+  })
+
+  const start = useCallback(async (): Promise<string> => {
+    const gatewayUrl = await startOpenClaw()
+    wsConnect(gatewayUrl)
+    return gatewayUrl
+  }, [wsConnect])
+
+  const stop = useCallback(async () => {
+    wsDisconnect()
+    await stopOpenClaw()
+  }, [wsDisconnect])
+
+  useEffect(() => {
+    start()
+    getOpenClawVersion()
+      .then(setVersion)
+      .catch(() => {})
+  }, [start])
 
   return {
+    gatewayConnected: readyState === WebSocket.OPEN,
     client: clientRef.current,
-    gatewayConnected,
     version,
     start,
     stop,

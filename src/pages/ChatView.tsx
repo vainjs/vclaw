@@ -1,7 +1,7 @@
+import type { GatewayEventFrame } from '../lib/openclaw-types'
 import { Bubble, Sender } from '@ant-design/x'
 import { useState, useEffect, useRef } from 'react'
-import { GatewayEventFrame } from '../lib/openclaw-adapter'
-import { useGateway } from '../contexts/GatewayContext'
+import { useGatewayContext } from '../contexts/GatewayContext'
 
 interface ChatMessage {
   id: string
@@ -41,22 +41,13 @@ function getTextFromPayload(payload: GatewayChatPayload): string | null {
 }
 
 export default function ChatView() {
-  const client = useGateway()
+  const { client, gatewayConnected } = useGatewayContext() ?? {}
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [streamingContent, setStreamingContent] = useState('')
   const [loading, setLoading] = useState(false)
   const [inputValue, setInputValue] = useState('')
-  const [connected, setConnected] = useState(false)
   const streamingRef = useRef('')
   const runIdRef = useRef<string | null>(null)
-
-  // Track connection state
-  useEffect(() => {
-    if (!client) return
-    setConnected(client.connected)
-    const unlisten = client.onConnectionChange((c) => setConnected(c))
-    return unlisten
-  }, [client])
 
   // Listen for chat events from the gateway
   useEffect(() => {
@@ -84,7 +75,10 @@ export default function ChatView() {
         }
         case 'final': {
           const finalContent = streamingRef.current || text || ''
-          setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content: finalContent }])
+          setMessages((prev) => [
+            ...prev,
+            { id: nextId(), role: 'assistant', content: finalContent },
+          ])
           streamingRef.current = ''
           setStreamingContent('')
           runIdRef.current = null
@@ -93,7 +87,10 @@ export default function ChatView() {
         }
         case 'error': {
           const errorText = text || '未知错误'
-          setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content: `错误: ${errorText}` }])
+          setMessages((prev) => [
+            ...prev,
+            { id: nextId(), role: 'assistant', content: `错误: ${errorText}` },
+          ])
           streamingRef.current = ''
           setStreamingContent('')
           runIdRef.current = null
@@ -105,7 +102,11 @@ export default function ChatView() {
           if (abortedContent) {
             setMessages((prev) => [
               ...prev,
-              { id: nextId(), role: 'assistant', content: abortedContent + '\n[已中断]' },
+              {
+                id: nextId(),
+                role: 'assistant',
+                content: abortedContent + '\n[已中断]',
+              },
             ])
           }
           streamingRef.current = ''
@@ -123,12 +124,22 @@ export default function ChatView() {
   const handleSend = async (value: string) => {
     if (!value.trim() || loading || !client) return
 
-    if (!connected) {
-      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content: '连接已断开，请等待重连...' }])
+    if (!gatewayConnected) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          role: 'assistant',
+          content: '连接已断开，请等待重连...',
+        },
+      ])
       return
     }
 
-    setMessages((prev) => [...prev, { id: nextId(), role: 'user', content: value }])
+    setMessages((prev) => [
+      ...prev,
+      { id: nextId(), role: 'user', content: value },
+    ])
     setLoading(true)
     streamingRef.current = ''
     setStreamingContent('')
@@ -141,7 +152,14 @@ export default function ChatView() {
       })
     } catch (e) {
       const err = e as Error
-      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content: '发送失败: ' + err.message }])
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          role: 'assistant',
+          content: '发送失败: ' + err.message,
+        },
+      ])
       setLoading(false)
     }
   }
@@ -170,7 +188,7 @@ export default function ChatView() {
     })
   }
 
-  const showConnecting = client !== null && !connected
+  const showConnecting = client !== null && !gatewayConnected
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
