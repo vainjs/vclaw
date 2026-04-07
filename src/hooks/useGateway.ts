@@ -36,6 +36,7 @@ export function useGateway() {
     >()
   )
   const eventCallbacksRef = useRef<Array<(evt: GatewayEventFrame) => void>>([])
+  const [connected, setConnected] = useState(false)
   const [gatewayUrl, setGatewayUrl] = useState('')
   const [version, setVersion] = useState('')
 
@@ -65,6 +66,7 @@ export function useGateway() {
       ],
     }
     await clientRef.current.request('connect', params)
+    setConnected(true)
   }
 
   const onMessage = (event: MessageEvent) => {
@@ -100,7 +102,7 @@ export function useGateway() {
     }
   }
 
-  const { send: wsSend, readyState } = useWebsocket(gatewayUrl, {
+  const { send: wsSend } = useWebsocket(gatewayUrl, {
     onMessage,
     onClose: () => {
       for (const [, entry] of pendingRef.current) {
@@ -142,7 +144,7 @@ export function useGateway() {
   })
 
   return {
-    gatewayConnected: readyState === WebSocket.OPEN,
+    gatewayConnected: connected,
     client: clientRef.current,
     stop: stopOpenClaw,
     version,

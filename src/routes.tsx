@@ -2,11 +2,10 @@ import { createBrowserRouter, Navigate } from 'react-router'
 import { useEffect } from 'react'
 import EnvCheck from './pages/EnvCheck'
 import AppLayout from './components/AppLayout'
-import ChatView from './pages/ChatView'
-import Channel from './pages/Channel'
+import ChatView from './pages/ChatView/index'
 import Log from './pages/Log'
 import Gateway from './pages/Gateway'
-import Config from './pages/Config'
+import Config from './pages/Config/index'
 
 function RootIndex() {
   const ready = sessionStorage.getItem('envReady') === 'true'
@@ -16,7 +15,7 @@ function RootIndex() {
   }, [])
 
   if (ready) {
-    return <Navigate to='/chat' replace />
+    return <Navigate to="/chat" replace />
   }
 
   return null
@@ -40,20 +39,16 @@ const router = createBrowserRouter([
         element: <ChatView />,
       },
       {
-        path: 'channels',
-        element: <Channel />,
-      },
-      {
-        path: 'logs',
-        element: <Log />,
-      },
-      {
         path: 'gateway',
         element: <Gateway />,
       },
       {
         path: 'config',
         element: <Config />,
+      },
+      {
+        path: 'logs',
+        element: <Log />,
       },
     ],
   },

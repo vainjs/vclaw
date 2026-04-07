@@ -2,7 +2,6 @@ import { Menu, Button, Badge, Typography } from 'antd'
 import {
   MessageOutlined,
   LaptopOutlined,
-  TeamOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   FileTextOutlined,
@@ -16,27 +15,22 @@ const items = [
   {
     key: 'chat',
     icon: <MessageOutlined />,
-    label: <NavLink to='/chat'>聊天</NavLink>,
-  },
-  {
-    key: 'channels',
-    icon: <TeamOutlined />,
-    label: <NavLink to='/channels'>渠道</NavLink>,
-  },
-  {
-    key: 'logs',
-    icon: <FileTextOutlined />,
-    label: <NavLink to='/logs'>日志</NavLink>,
+    label: <NavLink to="/chat">聊天</NavLink>,
   },
   {
     key: 'gateway',
     icon: <LaptopOutlined />,
-    label: <NavLink to='/gateway'>网关</NavLink>,
+    label: <NavLink to="/gateway">网关</NavLink>,
   },
   {
     key: 'config',
     icon: <ToolOutlined />,
-    label: <NavLink to='/config'>配置</NavLink>,
+    label: <NavLink to="/config">配置</NavLink>,
+  },
+  {
+    key: 'logs',
+    icon: <FileTextOutlined />,
+    label: <NavLink to="/logs">日志</NavLink>,
   },
 ]
 
@@ -47,7 +41,12 @@ interface SidebarProps {
   version: string
 }
 
-export default function Sidebar({ collapsed, onCollapse, gatewayConnected, version }: SidebarProps) {
+export default function Sidebar({
+  collapsed,
+  onCollapse,
+  gatewayConnected,
+  version,
+}: SidebarProps) {
   const location = useLocation()
 
   const selectedKey = location.pathname.split('/')[1] || 'chat'
@@ -58,7 +57,7 @@ export default function Sidebar({ collapsed, onCollapse, gatewayConnected, versi
         <Menu
           style={{ border: 'none', background: '#fff' }}
           inlineCollapsed={collapsed}
-          mode='inline'
+          mode="inline"
           selectedKeys={[selectedKey]}
           items={items}
         />
@@ -77,13 +76,18 @@ export default function Sidebar({ collapsed, onCollapse, gatewayConnected, versi
         <Button
           icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
           onClick={() => onCollapse(!collapsed)}
-          size='small'
-          type='text'
+          size="small"
+          type="text"
         />
         <div style={{ display: 'flex', gap: 8 }}>
           <Text
-            style={{ fontSize: 12, width: collapsed ? 0 : 'auto', overflow: 'hidden', whiteSpace: 'nowrap' }}
-            type='secondary'
+            style={{
+              fontSize: 12,
+              width: collapsed ? 0 : 'auto',
+              overflow: 'hidden',
+              whiteSpace: 'nowrap',
+            }}
+            type="secondary"
           >
             {collapsed ? '' : version}
           </Text>

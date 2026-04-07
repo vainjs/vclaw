@@ -1,14 +1,24 @@
 import { Layout } from 'antd'
 import { Outlet } from 'react-router'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import Sidebar from './Sidebar'
 import { useGateway } from '../hooks/useGateway'
 import { GatewayContext } from '../contexts/GatewayContext'
 
 const { Sider, Content } = Layout
 
+const COLLAPSED_KEY = 'sidebar-collapsed'
+
 export default function AppLayout() {
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem(COLLAPSED_KEY) === 'true'
+  )
   const { client, gatewayConnected, version, start, stop } = useGateway()
+
+  const handleCollapse = (val: boolean) => {
+    setCollapsed(val)
+    localStorage.setItem(COLLAPSED_KEY, String(val))
+  }
 
   const contextValue = useMemo(
     () => ({
@@ -26,7 +36,7 @@ export default function AppLayout() {
         <Sider
           width={180}
           collapsedWidth={64}
-          collapsed={false}
+          collapsed={collapsed}
           style={{
             flexDirection: 'column',
             background: '#fff',
@@ -34,8 +44,8 @@ export default function AppLayout() {
           }}
         >
           <Sidebar
-            collapsed={false}
-            onCollapse={() => {}}
+            collapsed={collapsed}
+            onCollapse={handleCollapse}
             gatewayConnected={gatewayConnected}
             version={version}
           />
