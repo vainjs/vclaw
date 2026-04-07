@@ -1,13 +1,13 @@
 # VClaw
 
-基于 Tauri + React + TypeScript 的跨平台桌面客户端，封装原生 openclaw，提供对话聊天、多渠道消息聚合和简化的渠道配置。
+基于 Tauri + React + TypeScript 的跨平台桌面客户端，封装原生 openclaw，提供对话聊天、日志查看和配置管理功能。
 
 ## 核心特性
 
-- **聊天优先界面** — 基于 @ant-design/x 的现代化对话体验
-- **多渠道聚合** — 支持 Discord、Slack、Telegram、Webhook 等渠道
-- **全局 openclaw** — 使用系统全局安装的 openclaw，配置在 `~/.openclaw/`
-- **VClaw 数据隔离** — VClaw 自身配置存放在 `vclaw-data/` 目录
+- **聊天优先界面** — 基于 @ant-design/x 的现代化对话体验，支持 markdown、头像、流式输出
+- **实时日志** — 查看 openclaw gateway 运行日志，支持级别过滤和关键词搜索
+- **网关管理** — 图形化启停 openclaw gateway，查看连接状态
+- **配置查看** — 直接浏览 `~/.openclaw/openclaw.json` 内容
 
 ## 技术栈
 
@@ -25,7 +25,7 @@
 - Node.js 18+
 - Rust 1.70+
 - pnpm (`npm install -g pnpm`)
-- openclaw (`pnpm add -g openclaw`)
+- openclaw (`npm install -g openclaw`)
 
 ### 安装依赖
 
@@ -45,15 +45,3 @@ pnpm run tauri dev
 pnpm run build
 pnpm run tauri build
 ```
-
-## 架构
-
-```
-Frontend (React) ──invoke──> Rust (Tauri) ──stdin/stdout──> openclaw CLI (全局)
-                                              │
-                                      vclaw-data/ (VClaw 数据)
-```
-
-- `src/lib/openclaw-adapter.ts` — TypeScript 封装层
-- `src/pages/` — 页面组件
-- `src-tauri/src/lib.rs` — Rust Tauri 命令
