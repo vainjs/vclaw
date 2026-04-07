@@ -159,7 +159,6 @@ export default function Gateway() {
             disabled={gatewayConnected}
             loading={startLoading}
             onClick={() => {
-              console.log('========ctx=========', ctx)
               if (!ctx) return
               setStartLoading(true)
               ctx

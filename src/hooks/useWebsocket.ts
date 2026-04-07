@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { useLatest } from '@vainjs/hooks'
+import { useLatest, useUnmounted } from '@vainjs/hooks'
 import { useMemoizedFn } from './useMemoizedFn'
 
 type Options = {
@@ -43,9 +43,8 @@ export function useWebsocket(socketUrl: string, options: Options = {}): Result {
 
   const reconnect = useMemoizedFn(() => {
     if (
-      (reconnectLimit !== undefined &&
-        reconnectCountRef.current >= reconnectLimit) ||
-      wsInstanceRef.current?.readyState === WebSocket.OPEN
+      reconnectLimit !== undefined &&
+      reconnectCountRef.current >= reconnectLimit
     ) {
       return
     }
@@ -60,12 +59,26 @@ export function useWebsocket(socketUrl: string, options: Options = {}): Result {
     }, reconnectInterval)
   })
 
-  const connect = useMemoizedFn((url?: string) => {
-    const targetUrl = url ?? socketUrl
-    if (!targetUrl) return
-    if (wsInstanceRef.current?.readyState === WebSocket.OPEN) return
+  const disconnect = useCallback(() => {
+    if (reconnectTimerRef.current !== null) {
+      clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
+    }
+    reconnectCountRef.current = 0
+    if (wsInstanceRef.current) {
+      wsInstanceRef.current.close()
+      wsInstanceRef.current = undefined
+    }
+    setReadyState(WebSocket.CLOSED)
+  }, [])
 
-    const ws = new WebSocket(targetUrl)
+  const connect = useMemoizedFn(() => {
+    if (!socketUrl) return
+    if (wsInstanceRef.current) {
+      disconnect()
+    }
+
+    const ws = new WebSocket(socketUrl)
     wsInstanceRef.current = ws
     setReadyState(WebSocket.CONNECTING)
 
@@ -97,17 +110,6 @@ export function useWebsocket(socketUrl: string, options: Options = {}): Result {
     })
   })
 
-  const disconnect = useCallback(() => {
-    if (reconnectTimerRef.current !== null) {
-      clearTimeout(reconnectTimerRef.current)
-      reconnectTimerRef.current = null
-    }
-    reconnectCountRef.current = 0
-    wsInstanceRef.current?.close()
-    wsInstanceRef.current = undefined
-    setReadyState(WebSocket.CLOSED)
-  }, [])
-
   useEffect(() => {
     if (!manual && socketUrl) {
       connect()
@@ -115,9 +117,9 @@ export function useWebsocket(socketUrl: string, options: Options = {}): Result {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socketUrl, manual])
 
-  useEffect(() => {
-    return disconnect
-  }, [disconnect])
+  useUnmounted(() => {
+    disconnect()
+  })
 
   const send = useCallback((data: string | ArrayBuffer | Blob) => {
     if (wsInstanceRef.current?.readyState === WebSocket.OPEN) {
